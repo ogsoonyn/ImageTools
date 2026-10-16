@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ImageTools</title>
+<meta name="description" content="ブラウザだけで動く画像処理ツール集。スプライトシートの書き出しやキーカラー抜きなど。">
+<script>
+// 保存済みテーマを描画前に適用(ちらつき防止)
+try { const t = localStorage.getItem('imagetools:theme'); if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t); } catch (e) {}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* テーマ変数は tools/ 側と同じ名前に揃える(#3 のテンプレートで統一予定) */
+:root{
+  --bg:#eef1f3; --panel:#ffffff; --line:#d6dce1; --fg:#1b2329; --muted:#5d6b75;
+  --accent:#0d7f86; --accent-fg:#ffffff;
+  --font-body:"Zen Kaku Gothic New","Hiragino Sans","Yu Gothic UI",system-ui,sans-serif;
+  --font-mono:"JetBrains Mono",ui-monospace,"Cascadia Mono",Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#12171b; --panel:#1a2126; --line:#2c363d; --fg:#e3e9ed; --muted:#93a2ad;
+  --accent:#3cc3c6; --accent-fg:#0b1417; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#12171b; --panel:#1a2126; --line:#2c363d; --fg:#e3e9ed; --muted:#93a2ad;
+  --accent:#3cc3c6; --accent-fg:#0b1417; color-scheme:dark}
+*,*::before,*::after{box-sizing:border-box}
+h1,h2,p,dl,dd,ul{margin:0}
+ul{padding:0;list-style:none}
+html,body{background:var(--bg);color:var(--fg)}
+body{margin:0;font-family:var(--font-body);font-size:15px;line-height:1.7;overflow-wrap:anywhere}
+.wrap{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:28px 48px;max-width:960px;margin:0 auto}
+header{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px;margin-bottom:24px}
+h1{font-size:26px;line-height:1.3;font-weight:700;text-wrap:balance}
+.lead{color:var(--muted);font-size:14px;margin-top:4px}
+.btn{font:inherit;font-size:13px;color:var(--fg);background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px 12px;cursor:pointer}
+.btn:hover{border-color:var(--accent)}
+.btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.card h2 a:focus-visible{outline:none}
+.card:focus-within{border-color:var(--accent);outline:2px solid var(--accent);outline-offset:2px}
+.cards{display:grid;gap:16px;grid-template-columns:repeat(auto-fill,minmax(min(100%,300px),1fr))}
+.card{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.card h2{font-size:18px;line-height:1.4;font-weight:700}
+.card h2 a{color:inherit;text-decoration:none}
+.card h2 a::after{content:"";position:absolute;inset:0}
+.card:hover{border-color:var(--accent)}
+.desc{font-size:14px}
+.desc,dl{position:relative;z-index:1}
+dl{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 12px;font-size:13px}
+dt{color:var(--muted)}
+dd{font-family:var(--font-mono);font-size:12px;line-height:1.9}
+.file{margin-top:auto;font-family:var(--font-mono);font-size:12px;color:var(--accent)}
+footer{margin-top:32px;font-size:12px;color:var(--muted)}
+footer a{color:var(--fg)}
+@media (prefers-reduced-motion: reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>ImageTools</h1>
+      <p class="lead">ブラウザだけで動く画像処理ツール集です。ファイルはアップロードされず、処理はすべて手元のブラウザ内で行われます。</p>
+    </div>
+    <button class="btn" id="theme-toggle" type="button" title="クリックでテーマを切り替え">テーマ: 自動</button>
+  </header>
+
+  <ul class="cards">
+    <li class="card">
+      <h2><a href="tools/aseprite-sheet-converter.html">Aseprite シート変換</a></h2>
+      <p class="desc">.ase / .aseprite ファイルを読み込み、レイヤーの表示切替やセル分割をしてスプライトシートPNGとAseprite互換JSONに書き出します。</p>
+      <dl>
+        <dt>入力</dt><dd>.ase / .aseprite</dd>
+        <dt>出力</dt><dd>PNG, JSON (Aseprite互換)</dd>
+      </dl>
+      <span class="file" aria-hidden="true">tools/aseprite-sheet-converter.html</span>
+    </li>
+    <li class="card">
+      <h2><a href="tools/keyout-sprite-packer.html">Keyout Sprite Packer</a></h2>
+      <p class="desc">連番PNGのキーカラー(マゼンタ等)を透過に変換し、1枚のスプライトシートにまとめます。1枚だけ渡すと既存シートの透過処理のみ行います。</p>
+      <dl>
+        <dt>入力</dt><dd>PNG / BMP (連番または1枚)</dd>
+        <dt>出力</dt><dd>PNG, JSON (独自形式 / Aseprite互換)</dd>
+      </dl>
+      <span class="file" aria-hidden="true">tools/keyout-sprite-packer.html</span>
+    </li>
+  </ul>
+
+  <footer>
+    <p>ソースコード: <a href="https://github.com/ogsoonyn/ImageTools">github.com/ogsoonyn/ImageTools</a> (MIT License)</p>
+  </footer>
+</div>
+<script>
+(() => {
+  // テーマ: 自動(OS設定) → ライト → ダーク の順で切替。保存できない環境でも動くよう try/catch で囲む
+  const KEY = 'imagetools:theme';
+  const LABEL = { auto: '自動', light: 'ライト', dark: 'ダーク' };
+  const NEXT = { auto: 'light', light: 'dark', dark: 'auto' };
+  const btn = document.getElementById('theme-toggle');
+  const apply = (t) => {
+    if (t === 'auto') document.documentElement.removeAttribute('data-theme');
+    else document.documentElement.setAttribute('data-theme', t);
+    btn.textContent = 'テーマ: ' + LABEL[t];
+  };
+  let theme = 'auto';
+  try { const s = localStorage.getItem(KEY); if (Object.hasOwn(LABEL, s)) theme = s; } catch (e) {}
+  apply(theme);
+  btn.addEventListener('click', () => {
+    theme = NEXT[theme];
+    apply(theme);
+    try { localStorage.setItem(KEY, theme); } catch (e) {}
+  });
+})();
+</script>
+</body>
+</html>

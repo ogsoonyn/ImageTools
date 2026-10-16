@@ -184,6 +184,15 @@ h1{text-wrap:balance}
           <input type="text" id="baseName" value="sprite_sheet">
           <span class="hint">PNGは末尾に「_AxB（列数x行数）」を付けて保存：<span class="mono" id="pngPreview"></span></span>
         </div>
+        <div class="field flex flex-col gap-1">
+          <label for="jsonFormat">JSON形式</label>
+          <select id="jsonFormat">
+            <option value="native">独自形式（従来）</option>
+            <option value="hash">Aseprite互換 Hash（frames がオブジェクト）</option>
+            <option value="array">Aseprite互換 Array（frames が配列）</option>
+          </select>
+          <span class="hint">Aseprite互換は aseprite-sheet-converter と同じ構造です。duration はFPSから算出します。</span>
+        </div>
       </section>
     </aside>
 
@@ -423,7 +432,8 @@ function tick(t){
 
 // ---- 書き出し ----
 function metaJson(){
-  const name=$('baseName').value.trim()||'sprite_sheet';
+  const fmt=$('jsonFormat').value;
+  if(fmt==='hash'||fmt==='array') return JSON.stringify(asepriteJson(fmt),null,2);
   return JSON.stringify({
     image:pngName(), size:{w:layout.W,h:layout.H},
     cell:{w:layout.cellW,h:layout.cellH}, columns:layout.cols, rows:layout.rows, frameCount:layout.rects.length,
@@ -431,6 +441,32 @@ function metaJson(){
     fps:+$('fps').value, alphaMode:S.mode==='lum'?'luminance':'colorkey',
     frames:layout.rects.map((r,i)=>({index:i,source:S.sheetMode?frames[0].name:frames[i].name,cell:r.cell,trimmed:{x:r.x,y:r.y,w:r.w,h:r.h}}))
   },null,2);
+}
+// Aseprite互換（--format json-hash / json-array 相当）。sourceSize はセル、spriteSourceSize はセル内の描画位置
+function asepriteJson(fmt){
+  const dur=Math.round(1000/Math.max(1,+$('fps').value||1));
+  const stem=n=>n.replace(/\.[^.]+$/,'');
+  const used=new Set();
+  const uniq=n=>{let k=n,i=1;while(used.has(k)){const m=n.match(/^(.*?)(\.[^.]*)?$/);k=m[1]+'_'+(i++)+(m[2]||'');}used.add(k);return k;};
+  const entries=layout.rects.map((r,i)=>{
+    const c=r.cell;
+    const key=uniq(S.sheetMode?stem(frames[0].name)+' '+i+'.png':frames[i].name);
+    return [key,{
+      frame:{x:r.x,y:r.y,w:r.w,h:r.h}, rotated:false, trimmed:r.w!==c.w||r.h!==c.h,
+      spriteSourceSize:{x:r.x-c.x,y:r.y-c.y,w:r.w,h:r.h},
+      sourceSize:{w:c.w,h:c.h}, duration:dur,
+    }];
+  });
+  const fr=fmt==='array'?entries.map(([filename,v])=>Object.assign({filename},v)):Object.fromEntries(entries);
+  return {
+    frames:fr,
+    meta:{
+      app:'https://www.aseprite.org/', version:'1.3',
+      image:pngName(), format:'RGBA8888',
+      size:{w:layout.W,h:layout.H}, scale:'1',
+      frameTags:[], layers:[], slices:[],
+    },
+  };
 }
 async function saveFile(filename,data){
   const dl=downloadsP?await downloadsP:null;
