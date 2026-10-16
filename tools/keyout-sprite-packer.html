@@ -1,92 +1,159 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Keyout Sprite Packer</title>
 <meta name="claude:viewport-fit-sides" content="cover">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<!-- common:begin theme-init -->
+<script>
+  // 描画前に保存済みテーマを反映してちらつきを防ぐ（localStorage が使えなくても動く）
+  (() => {
+    try {
+      const t = localStorage.getItem("imagetools:theme");
+      if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
+    } catch (e) { /* 保存領域が使えない環境では OS 設定に従う */ }
+  })();
+</script>
+<!-- common:end theme-init -->
 <style>
-/* Layout: left = 設定パネル（固定幅）, right = シートプレビュー＋アニメ確認。狭幅では縦積み */
+/* common:begin theme-vars */
+/* テーマ変数。既存ツールの変数名（--bg/--panel/--line/--fg/--muted/--accent/--accent-fg/--warn/--chk-*）を踏襲し、
+   Aseprite 側の名前（--surface/--surface-2/--accent-soft/--danger/--checker-*）も別名として用意する */
 :root{
-  --bg:#eef1f3; --panel:#ffffff; --line:#d6dce1; --fg:#1b2329; --muted:#5d6b75;
-  --accent:#0d7f86; --accent-fg:#ffffff; --key:#ff00ff; --warn:#a1560b;
+  --bg:#eef1f3; --panel:#ffffff; --surface-2:#e4e8ec; --line:#d6dce1; --fg:#1b2329; --muted:#5d6b75;
+  --accent:#0d7f86; --accent-fg:#ffffff; --accent-soft:#d4eef0; --warn:#a1560b; --danger:#b42318;
   --chk-a:#ffffff; --chk-b:#d9dde1;
-  --font-body:"Zen Kaku Gothic New","Hiragino Sans","Yu Gothic UI",system-ui,sans-serif;
-  --font-mono:"JetBrains Mono",ui-monospace,"Cascadia Mono",Consolas,monospace;
+  --surface:var(--panel); --checker-a:var(--chk-a); --checker-b:var(--chk-b);
+  --font-body:"Hiragino Sans","Yu Gothic UI","Noto Sans JP",system-ui,sans-serif;
+  --font-mono:ui-monospace,"Cascadia Mono",Consolas,"JetBrains Mono",monospace;
+  color-scheme:light;
 }
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
-  --bg:#12171b; --panel:#1a2126; --line:#2c363d; --fg:#e3e9ed; --muted:#93a2ad;
-  --accent:#3cc3c6; --accent-fg:#0b1417; --warn:#e7a35a; --chk-a:#2a3238; --chk-b:#20272c; color-scheme:dark}}
+  --bg:#12171b; --panel:#1a2126; --surface-2:#232b31; --line:#2c363d; --fg:#e3e9ed; --muted:#93a2ad;
+  --accent:#3cc3c6; --accent-fg:#0b1417; --accent-soft:#163a3d; --warn:#e7a35a; --danger:#ff8a7a;
+  --chk-a:#2a3238; --chk-b:#20272c; color-scheme:dark}}
 :root[data-theme="dark"]{
-  --bg:#12171b; --panel:#1a2126; --line:#2c363d; --fg:#e3e9ed; --muted:#93a2ad;
-  --accent:#3cc3c6; --accent-fg:#0b1417; --warn:#e7a35a; --chk-a:#2a3238; --chk-b:#20272c; color-scheme:dark}
-/* ユーティリティ（Tailwind互換の最小セット。CDN不使用で警告を出さない） */
+  --bg:#12171b; --panel:#1a2126; --surface-2:#232b31; --line:#2c363d; --fg:#e3e9ed; --muted:#93a2ad;
+  --accent:#3cc3c6; --accent-fg:#0b1417; --accent-soft:#163a3d; --warn:#e7a35a; --danger:#ff8a7a;
+  --chk-a:#2a3238; --chk-b:#20272c; color-scheme:dark}
+/* common:end theme-vars */
+
+/* common:begin base */
+*,*::before,*::after{box-sizing:border-box}
+h1,h2,h3,p,dl,dd{margin:0}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;margin:0}
+html,body{background:var(--bg);color:var(--fg)}
+body{margin:0;font-family:var(--font-body);font-size:14px;line-height:1.6}
+.wrap{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:16px 40px;max-width:1280px;margin:0 auto}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+h1{text-wrap:balance}
+[hidden]{display:none!important}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+@media (prefers-reduced-motion: reduce){*{transition:none!important}}
+/* common:end base */
+
+/* common:begin utilities */
+/* Tailwind 互換の最小ユーティリティ（CDN 不使用。使うクラスだけ書き足す） */
 .flex{display:flex}.grid{display:grid}.flex-col{flex-direction:column}.flex-wrap{flex-wrap:wrap}
-.items-center{align-items:center}.items-end{align-items:flex-end}.justify-between{justify-content:space-between}
+.items-center{align-items:center}.items-end{align-items:flex-end}.justify-between{justify-content:space-between}.justify-center{justify-content:center}
 .gap-1{gap:4px}.gap-2{gap:8px}.gap-3{gap:12px}.gap-4{gap:16px}.gap-5{gap:20px}
-.mb-4{margin-bottom:16px}.p-4{padding:16px}.min-w-0{min-width:0}
+.mb-2{margin-bottom:8px}.mb-4{margin-bottom:16px}.mt-2{margin-top:8px}.p-3{padding:12px}.p-4{padding:16px}
+.min-w-0{min-width:0}.w-full{width:100%}
 .grid-cols-2{grid-template-columns:repeat(2,minmax(0,1fr))}
 @media (min-width:640px){.sm\:grid-cols-4{grid-template-columns:repeat(4,minmax(0,1fr))}}
-.text-xl{font-size:20px;line-height:1.4}.font-bold{font-weight:700}.text-\[13px\]{font-size:13px}
-*,*::before,*::after{box-sizing:border-box}
-h1,h2,p,dl,dd{margin:0}
-button{font:inherit;color:inherit;background:none;border:0;padding:0;margin:0}
-input[type=checkbox]{accent-color:var(--accent);margin:0}
-html,body{background:var(--bg);color:var(--fg)}
-body{font-family:var(--font-body);font-size:14px;line-height:1.6}
-.wrap{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 40px;max-width:1280px;margin:0 auto}
+.text-xs{font-size:12px}.text-sm{font-size:13px}.text-xl{font-size:20px;line-height:1.4}.font-bold{font-weight:700}
+.text-muted{color:var(--muted)}
 .mono,.num{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+/* common:end utilities */
+
+/* common:begin components */
+/* daisyUI 風コンポーネント（必要分のみ） */
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:10px}
 .sec-title{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:700}
-.field label,.lbl{font-size:13px;color:var(--fg)}
 .hint{font-size:12px;color:var(--muted)}
-input[type=range]{width:100%;accent-color:var(--accent)}
-input[type=number],input[type=text],select{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:4px 8px;color:var(--fg);font-family:var(--font-mono);font-size:13px;min-width:0}
-input[type=color]{width:36px;height:30px;border:1px solid var(--line);border-radius:6px;background:var(--bg);padding:2px;cursor:pointer}
-.btn{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--panel);color:var(--fg);border-radius:7px;padding:6px 12px;font-size:13px;font-weight:500;cursor:pointer;transition:background .15s,border-color .15s}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--line);background:var(--panel);color:var(--fg);border-radius:7px;padding:6px 12px;font-size:13px;font-weight:500;line-height:1.4;cursor:pointer;white-space:nowrap;text-decoration:none;transition:background .15s,border-color .15s}
 .btn:hover{border-color:var(--accent)}
 .btn-primary{background:var(--accent);color:var(--accent-fg);border-color:var(--accent);font-weight:700}
 .btn-primary:hover{filter:brightness(1.08)}
+.btn-ghost{border-color:transparent;background:transparent}
+.btn-ghost:hover{background:var(--surface-2);border-color:transparent}
+.btn-sm{padding:3px 8px;font-size:12px}
 .btn:disabled{opacity:.45;cursor:not-allowed}
-:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.btn.is-active,.btn[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--accent)}
+.join{display:inline-flex;flex-wrap:wrap}
+.join>.btn{border-radius:0;margin-left:-1px}
+.join>.btn:first-child{border-radius:7px 0 0 7px;margin-left:0}
+.join>.btn:last-child{border-radius:0 7px 7px 0}
+.select,.input{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:4px 8px;color:var(--fg);font-family:var(--font-mono);font-size:13px;min-width:0}
+.range{width:100%;accent-color:var(--accent)}
+.checkbox{accent-color:var(--accent);margin:0}
+.badge{display:inline-block;font-size:11px;font-weight:700;padding:1px 8px;border-radius:999px;background:var(--accent);color:var(--accent-fg)}
+.warn{color:var(--warn)}.danger{color:var(--danger)}
+.drop{display:block;border:1.5px dashed var(--line);border-radius:8px;padding:14px;text-align:center;cursor:pointer;transition:border-color .15s,background .15s}
+.drop.over,.drop:hover,.drop:has(+ .sr-only:focus){border-color:var(--accent);background:var(--accent-soft)}
+.drop:has(+ .sr-only:focus-visible){outline:2px solid var(--accent);outline-offset:2px}
+.bg-checker{background-color:var(--chk-a);background-image:linear-gradient(45deg,var(--chk-b) 25%,transparent 25%,transparent 75%,var(--chk-b) 75%),linear-gradient(45deg,var(--chk-b) 25%,transparent 25%,transparent 75%,var(--chk-b) 75%);background-size:16px 16px;background-position:0 0,8px 8px}
+.stage{border-radius:8px;border:1px solid var(--line);overflow:auto;max-height:70vh;display:flex;align-items:flex-start;justify-content:center;padding:12px}
+.stage canvas{max-width:100%;height:auto}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));background:var(--fg);color:var(--bg);padding:8px 14px;border-radius:8px;font-size:13px;opacity:0;pointer-events:none;transition:opacity .2s;z-index:100;max-width:calc(100vw - 32px)}
+.toast.show{opacity:1}
+/* common:end components */
+
+/* common:begin header-style */
+.app-header{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 12px;margin-bottom:16px}
+.app-header .back{display:inline-block;padding:4px 0;font-size:12px;color:var(--muted);text-decoration:none}
+.app-header .back:hover{color:var(--accent)}
+.app-header .actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+/* common:end header-style */
+
+/* ---- ここから下はツール固有のスタイル ---- */
+/* Layout: left = 設定パネル（固定幅）, right = シートプレビュー＋アニメ確認。狭幅では縦積み */
+:root{--key:#ff00ff}
+.text-\[13px\]{font-size:13px}
+input[type=checkbox]{accent-color:var(--accent);margin:0}
+.field label,.lbl{font-size:13px;color:var(--fg)}
+input[type=range]{width:100%;accent-color:var(--accent)}
+input[type=number],input[type=text],select{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:4px 8px;color:var(--fg);font-family:var(--font-mono);font-size:13px;min-width:0}
+input[type=color]{width:36px;height:30px;border:1px solid var(--line);border-radius:6px;background:var(--bg);padding:2px;cursor:pointer}
 .seg{display:inline-flex;border:1px solid var(--line);border-radius:7px;overflow:hidden;flex-wrap:wrap}
 .seg button{padding:5px 10px;font-size:12.5px;background:var(--panel);color:var(--muted);border-right:1px solid var(--line);cursor:pointer}
 .seg button:last-child{border-right:0}
 .seg button[aria-pressed="true"]{background:var(--accent);color:var(--accent-fg);font-weight:700}
-.stage{border-radius:8px;border:1px solid var(--line);overflow:auto;max-height:70vh;display:flex;align-items:flex-start;justify-content:center;padding:12px}
-.bg-checker{background-color:var(--chk-a);background-image:linear-gradient(45deg,var(--chk-b) 25%,transparent 25%,transparent 75%,var(--chk-b) 75%),linear-gradient(45deg,var(--chk-b) 25%,transparent 25%,transparent 75%,var(--chk-b) 75%);background-size:16px 16px;background-position:0 0,8px 8px}
 .bg-black{background:#000}.bg-white{background:#fff}.bg-gray{background:#6b7378}
-.stage canvas{max-width:100%;height:auto;image-rendering:auto}
+.stage canvas{image-rendering:auto}
 .stage.pixel canvas{image-rendering:pixelated}
-.drop{border:1.5px dashed var(--line);border-radius:8px;padding:14px;text-align:center;cursor:pointer;transition:border-color .15s,background .15s}
-.drop.over,.drop:hover{border-color:var(--accent)}
 .thumbs{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px}
 .thumb{flex:0 0 auto;width:68px;border:1px solid var(--line);border-radius:6px;padding:4px;position:relative;background:var(--panel)}
 .thumb canvas{width:100%;height:56px;object-fit:contain;display:block}
 .thumb .idx{font-family:var(--font-mono);font-size:10px;color:var(--muted);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .thumb .rm{position:absolute;top:-7px;right:-7px;width:18px;height:18px;border-radius:50%;background:var(--panel);border:1px solid var(--line);font-size:11px;line-height:15px;color:var(--muted);cursor:pointer}
-.badge{display:inline-block;font-size:11px;font-weight:700;padding:1px 8px;border-radius:999px;background:var(--accent);color:var(--accent-fg);margin-right:6px}
-.warn{color:var(--warn)}
 .thumb .rm:hover{color:var(--warn);border-color:var(--warn)}
+#srcNote .badge{margin-right:6px}
 .keychip{display:inline-block;width:12px;height:12px;border-radius:3px;background:var(--key);vertical-align:-1px;border:1px solid var(--line)}
 .stat dt{font-size:11px;color:var(--muted)}
 .stat dd{font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:15px;font-weight:600}
-.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));background:var(--fg);color:var(--bg);padding:8px 14px;border-radius:8px;font-size:13px;opacity:0;pointer-events:none;transition:opacity .2s}
-.toast.show{opacity:1}
 .grid-main{display:grid;grid-template-columns:330px minmax(0,1fr);gap:16px;align-items:start}
 @media (max-width:860px){.grid-main{grid-template-columns:minmax(0,1fr)}}
-h1{text-wrap:balance}
-@media (prefers-reduced-motion: reduce){*{transition:none!important}}
 </style>
-
+</head>
+<body>
 <div class="wrap">
-  <header class="flex flex-wrap items-end justify-between gap-3 mb-4">
-    <div>
+  <!-- common:begin header -->
+  <header class="app-header">
+    <div class="min-w-0">
+      <a class="back" href="../index.html">← ツール一覧</a>
       <h1 class="text-xl font-bold">Keyout Sprite Packer</h1>
       <p class="hint">連番PNGのキーカラー（<span class="keychip"></span> マゼンタ等）を透過に変換し、1枚のスプライトシートにまとめます。処理はすべてブラウザ内で完結します。</p>
     </div>
-    <div class="flex gap-2 flex-wrap">
+    <div class="actions">
       <button class="btn btn-primary" id="btnPng" type="button">PNGを保存</button>
       <button class="btn" id="btnJson" type="button">JSONを保存</button>
+      <button class="btn btn-ghost" type="button" id="btnResetPrefs" title="キーカラー・透過モード・シート配置・FPS などの設定を初期値に戻します">設定をリセット</button>
+      <button class="btn btn-ghost" type="button" id="themeToggle">テーマ: 自動</button>
     </div>
   </header>
+  <!-- common:end header -->
 
   <div class="grid-main">
     <!-- 設定 -->
@@ -97,7 +164,7 @@ h1{text-wrap:balance}
           <span class="lbl">PNG / BMP をドロップ、またはクリックして選択</span><br>
           <span class="hint">複数枚 = 連番としてシート化（ファイル名の自然順）<br>1枚 = 既存シートの透過処理のみ</span>
         </label>
-        <input type="file" id="fileInput" accept="image/png,image/bmp,image/*" multiple hidden>
+        <input type="file" id="fileInput" class="sr-only" accept="image/png,image/bmp,image/*" multiple>
         <div class="flex flex-wrap items-center gap-2"><button class="btn" type="button" id="btnSample">サンプルを読み込む</button><span class="hint" id="sampleNote"></span></div>
         <p class="hint" id="srcNote"></p>
       </section>
@@ -195,11 +262,6 @@ h1{text-wrap:balance}
         </div>
       </section>
 
-      <section class="flex flex-col gap-2">
-        <h2 class="sec-title">設定</h2>
-        <div><button class="btn" type="button" id="btnResetPrefs">設定をリセット</button></div>
-        <p class="hint">キーカラー・透過モード・シート配置・JSON形式・FPS・背景などの設定はこのブラウザに保存され、次回開いたときに復元されます。出力ファイル名と分割数は画像ごとに決まるため保存しません。</p>
-      </section>
     </aside>
 
     <!-- プレビュー -->
@@ -264,9 +326,160 @@ h1{text-wrap:balance}
     </main>
   </div>
 </div>
+
+<!-- common:begin toast -->
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
+<!-- common:end toast -->
+
+<!-- common:begin common-js -->
+<script>
+/* 共通 JS。各ツールはこのブロックをそのままコピーし、下の「ツール固有」スクリプトから IT.* を使う */
+const IT = (() => {
+  const PREFIX = "imagetools:";
+
+  // ---- localStorage の安全な読み書き（プライベートモード等で例外になっても落ちない） ----
+  const store = {
+    get(key, fallback = null) {
+      try { const v = localStorage.getItem(PREFIX + key); return v === null ? fallback : JSON.parse(v); }
+      catch (e) { return fallback; }
+    },
+    set(key, value) {
+      try { localStorage.setItem(PREFIX + key, JSON.stringify(value)); return true; }
+      catch (e) { return false; }
+    },
+    remove(key) {
+      try { localStorage.removeItem(PREFIX + key); } catch (e) { /* 無視 */ }
+    },
+  };
+
+  // ---- トースト ----
+  let toastTimer = 0;
+  function toast(msg, ms = 2400) {
+    const t = document.getElementById("toast");
+    if (!t) return;
+    t.textContent = msg;
+    t.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.remove("show"), ms);
+  }
+
+  // ---- テーマ切替（自動 → ライト → ダーク の順に循環） ----
+  // theme-init は生の文字列で読むため、ここも JSON を介さず同じキーに文字列で保存する
+  const THEME_KEY = PREFIX + "theme";
+  const THEME_LABEL = { auto: "テーマ: 自動", light: "テーマ: ライト", dark: "テーマ: ダーク" };
+  function getTheme() {
+    const t = document.documentElement.dataset.theme;
+    return t === "light" || t === "dark" ? t : "auto";
+  }
+  function applyTheme(theme) {
+    const root = document.documentElement;
+    if (theme === "light" || theme === "dark") root.dataset.theme = theme;
+    else delete root.dataset.theme;
+    try {
+      if (theme === "auto") localStorage.removeItem(THEME_KEY);
+      else localStorage.setItem(THEME_KEY, theme);
+    } catch (e) { /* 保存できなくても切替自体は有効 */ }
+    const btn = document.getElementById("themeToggle");
+    if (btn) btn.textContent = THEME_LABEL[getTheme()];
+  }
+  function initThemeToggle() {
+    const btn = document.getElementById("themeToggle");
+    if (!btn) return;
+    btn.textContent = THEME_LABEL[getTheme()];
+    btn.addEventListener("click", () => {
+      const next = { auto: "light", light: "dark", dark: "auto" }[getTheme()];
+      applyTheme(next);
+      toast(THEME_LABEL[next]);
+    });
+  }
+
+  // ---- ファイル保存（Claude アーティファクトでは downloads、通常ブラウザでは <a download>） ----
+  // "anchor" = 通常ブラウザ / null = アーティファクト内だが downloads が使えない / それ以外 = downloads ハンドル
+  let downloadsP = null;
+  function getDownloads() {
+    if (!downloadsP) {
+      downloadsP = (window.claude && typeof window.claude.use === "function")
+        ? Promise.resolve().then(() => window.claude.use("downloads")).then((d) => d || null, () => null)
+        : Promise.resolve("anchor");
+    }
+    return downloadsP;
+  }
+  getDownloads();
+  const SAVE_ERRORS = { declined: "保存をキャンセルしました", rate_limited: "保存が続いたため一時的に制限されています。少し待ってからお試しください" };
+  async function saveFile(filename, data) {
+    const dl = await getDownloads();
+    if (dl === "anchor") {
+      const blob = data instanceof Blob ? data : new Blob([data]);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = filename;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 4000);
+      toast(filename + " を保存しました");
+      return true;
+    }
+    if (!dl) { toast("この表示ではファイルを保存できません"); return false; }
+    try {
+      const res = await dl.save({ filename, data });
+      const ok = !res || res.status === undefined || res.status === "saved";
+      if (ok) toast(filename + " を保存しました");
+      return ok;
+    } catch (e) {
+      const code = (e && e.code) || "error";
+      toast(SAVE_ERRORS[code] || "保存できませんでした（" + code + "）");
+      return false;
+    }
+  }
+  function canvasToBlob(canvas, type = "image/png") {
+    return new Promise((res, rej) => canvas.toBlob((b) => (b ? res(b) : rej(new Error("toBlob failed"))), type));
+  }
+
+  // ---- ドラッグ&ドロップ受付（ページ全体で受け、zone に .over を付ける） ----
+  // accept: ファイルを絞る関数（省略時はすべて）。onFiles には絞り込み後の File[] を渡す
+  function initDrop({ zone, input, accept = () => true, onFiles, emptyMessage = "対応するファイルが見つかりませんでした" }) {
+    const zoneEl = typeof zone === "string" ? document.getElementById(zone) : zone;
+    const inputEl = typeof input === "string" ? document.getElementById(input) : input;
+    const handle = (list) => {
+      const files = [...(list || [])].filter(accept);
+      if (!files.length) { toast(emptyMessage); return; }
+      onFiles(files);
+    };
+    let depth = 0;
+    const hasFiles = (e) => !!e.dataTransfer && [...e.dataTransfer.types].includes("Files");
+    document.addEventListener("dragenter", (e) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault(); depth++; zoneEl && zoneEl.classList.add("over");
+    });
+    document.addEventListener("dragover", (e) => { if (hasFiles(e)) e.preventDefault(); });
+    document.addEventListener("dragleave", (e) => {
+      if (!hasFiles(e)) return;
+      depth = Math.max(0, depth - 1);
+      if (!depth && zoneEl) zoneEl.classList.remove("over");
+    });
+    document.addEventListener("drop", (e) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault(); depth = 0; zoneEl && zoneEl.classList.remove("over");
+      handle(e.dataTransfer.files);
+    });
+    if (inputEl) inputEl.addEventListener("change", (e) => { handle(e.target.files); e.target.value = ""; });
+  }
+
+  initThemeToggle();
+  // 別タブでテーマを変えたら追従する（保存はし直さない）
+  window.addEventListener("storage", (e) => {
+    if (e.key !== THEME_KEY) return;
+    const t = e.newValue === "light" || e.newValue === "dark" ? e.newValue : null;
+    if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme;
+    const btn = document.getElementById("themeToggle");
+    if (btn) btn.textContent = THEME_LABEL[getTheme()];
+  });
+  return { store, toast, saveFile, canvasToBlob, initDrop, applyTheme, getTheme };
+})();
+</script>
+<!-- common:end common-js -->
 
 <script>
+/* ---- ここから下はツール固有のスクリプト ---- */
 const SAMPLE_DIR='../samples/keyout/';
 const SAMPLE_FILES=['colon183','colon184','colon185','colon186','colon187','colon188','colon189','colon190','colon191'].map(n=>n+'.png');
 
@@ -276,11 +489,10 @@ let frames = [];          // {name, w, h, orig:canvas, proc:canvas}
 let layout = null;        // {cellW, cellH, cols, rows, W, H, rects}
 const sheet = document.createElement('canvas');
 const sctx = sheet.getContext('2d');
-let downloadsP = null;
 
 function mk(w,h){const c=document.createElement('canvas');c.width=w;c.height=h;return c;}
 function hexToRgb(h){const n=parseInt(h.slice(1),16);return [(n>>16)&255,(n>>8)&255,n&255];}
-function toast(msg){const t=$('toast');t.textContent=msg;t.classList.add('show');clearTimeout(toast._t);toast._t=setTimeout(()=>t.classList.remove('show'),2400);}
+const toast=msg=>IT.toast(msg);
 
 async function loadImage(src){
   const img=new Image(); img.src=src; await img.decode();
@@ -474,24 +686,13 @@ function asepriteJson(fmt){
     },
   };
 }
-async function saveFile(filename,data){
-  const dl=downloadsP?await downloadsP:null;
-  if(dl){
-    try{await dl.save({filename,data}); toast(filename+' を保存しました');}
-    catch(e){ toast(e&&e.code==='declined'?'保存をキャンセルしました':'保存できませんでした（'+(e&&e.code||'error')+'）'); }
-    return;
-  }
-  const url=URL.createObjectURL(data instanceof Blob?data:new Blob([data]));
-  const a=document.createElement('a'); a.href=url; a.download=filename; document.body.appendChild(a); a.click(); a.remove();
-  setTimeout(()=>URL.revokeObjectURL(url),4000);
-}
 function pngName(){
   // 名前の末尾に既に _AxB（x/X/×）が付いていれば取り除いてから付け直す（二重付与防止）
   const base=($('baseName').value.trim().replace(/\.png$/i,'').replace(/[_\-\s]*\d+\s*[xX×]\s*\d+$/,'')||'sprite_sheet');
   return base+'_'+layout.cols+'x'+layout.rows+'.png';
 }
-$('btnPng').onclick=()=>{ if(!layout)return; const n=pngName(); sheet.toBlob(b=>saveFile(n,b),'image/png'); };
-$('btnJson').onclick=()=>{ if(!layout)return; saveFile(pngName().replace(/\.png$/,'.json'),metaJson()); };
+$('btnPng').onclick=()=>{ if(!layout)return; const n=pngName(); IT.canvasToBlob(sheet).then(b=>IT.saveFile(n,b),()=>toast('PNGを作成できませんでした')); };
+$('btnJson').onclick=()=>{ if(!layout)return; IT.saveFile(pngName().replace(/\.png$/,'.json'),new Blob([metaJson()],{type:'application/json'})); };
 
 // ---- UI 結線 ----
 function syncLabels(){
@@ -533,22 +734,13 @@ async function readFiles(fileList){
   await setFrames(list);
   if(files.length>1) $('srcNote').textContent=files.length+' 枚を連番として読み込みました';
 }
-$('fileInput').addEventListener('change',e=>{readFiles(e.target.files);e.target.value='';});
-const drop=$('drop');
-['dragenter','dragover'].forEach(t=>document.addEventListener(t,e=>{e.preventDefault();drop.classList.add('over');}));
-['dragleave','drop'].forEach(t=>document.addEventListener(t,e=>{e.preventDefault();if(t==='drop'||!e.relatedTarget)drop.classList.remove('over');}));
-document.addEventListener('drop',e=>{if(e.dataTransfer?.files?.length)readFiles(e.dataTransfer.files);});
+IT.initDrop({zone:'drop',input:'fileInput',accept:f=>f.type.startsWith('image/'),onFiles:readFiles,emptyMessage:'画像ファイルが見つかりませんでした'});
 
 // ---- 設定の記憶 ----
-// localStorage の imagetools:keyout-sprite-packer:settings に JSON で保存する。読み書きに失敗しても通常どおり動く
-const PREFS_KEY='imagetools:keyout-sprite-packer:settings';
+// IT.store の keyout-sprite-packer:settings に 1 オブジェクトで保存する（読み書きの失敗は IT.store 側で握りつぶす）
+const PREFS_KEY='keyout-sprite-packer:settings';
 const PREF_IDS=['keyColor','tol','soft','unblend','blackPt','whitePt','lumColor','cols','pad','mult4','pot','jsonFormat','fps','showGrid'];
 const PREF_SEGS={mode:'[aria-label="透過モード"]',bg:'#bgSeg',blend:'#blendSeg'};
-const prefStore={
-  get(){try{const v=JSON.parse(localStorage.getItem(PREFS_KEY));return v&&typeof v==='object'?v:null;}catch(e){return null;}},
-  set(v){try{localStorage.setItem(PREFS_KEY,JSON.stringify(v));}catch(e){}},
-  remove(){try{localStorage.removeItem(PREFS_KEY);}catch(e){}},
-};
 function readPrefs(){
   const o={};
   PREF_IDS.forEach(id=>{const el=$(id);o[id]=el.type==='checkbox'?el.checked:el.value;});
@@ -557,7 +749,7 @@ function readPrefs(){
 }
 const PREF_DEFAULTS=readPrefs();
 let restoringPrefs=false;
-function savePrefs(){ if(!restoringPrefs) prefStore.set(readPrefs()); }
+function savePrefs(){ if(!restoringPrefs) IT.store.set(PREFS_KEY,readPrefs()); }
 function applyPrefs(p){
   restoringPrefs=true;
   try{
@@ -581,11 +773,10 @@ function applyPrefs(p){
 PREF_IDS.forEach(id=>['input','change'].forEach(t=>$(id).addEventListener(t,savePrefs)));
 Object.values(PREF_SEGS).forEach(sel=>document.querySelectorAll(sel+' button').forEach(b=>b.addEventListener('click',savePrefs)));
 $('btnPick').addEventListener('click',savePrefs);
-$('btnResetPrefs').onclick=()=>{ applyPrefs(PREF_DEFAULTS); prefStore.remove(); toast('設定を初期値に戻しました'); };
-{ const saved=prefStore.get(); if(saved) applyPrefs(saved); }
+$('btnResetPrefs').onclick=()=>{ applyPrefs(PREF_DEFAULTS); IT.store.remove(PREFS_KEY); toast('設定をリセットしました'); };
+{ const saved=IT.store.get(PREFS_KEY); if(saved&&typeof saved==='object') applyPrefs(saved); }
 
 // 起動
-if(window.claude&&typeof window.claude.use==='function'){ downloadsP=window.claude.use('downloads').catch(()=>null); }
 syncLabels();
 // サンプルは samples/ から fetch する（file:// では fetch できないためボタンを無効化）
 if(location.protocol==='file:'){ $('btnSample').disabled=true; $('sampleNote').textContent='ローカルファイルとして開いているためサンプルは読み込めません（Webサーバー経由で開くと使えます）'; }
@@ -604,3 +795,5 @@ $('btnSample').onclick=async()=>{
 };
 requestAnimationFrame(tick);
 </script>
+</body>
+</html>

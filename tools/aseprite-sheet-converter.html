@@ -284,12 +284,6 @@ img,video{max-width:100%;height:auto}
         <p class="text-[12px] text-muted">ファイル名: <span id="out-name" class="num text-fg break-all"></span></p>
         <p id="save-note" class="text-[12px] text-muted min-h-[1.2em]" aria-live="polite"></p>
       </section>
-
-      <section class="side-sec p-4 flex flex-col gap-3">
-        <span class="label">設定</span>
-        <div><button id="reset-prefs" class="btn btn-sm" type="button">設定をリセット</button></div>
-        <p class="text-[11px] text-muted">レイアウト・列数・倍率・余白・切り出し・JSON形式・表示倍率などの設定はこのブラウザに保存され、次回開いたときに復元されます。セル分割とレイヤーの表示状態はファイルごとに決まるため保存しません。</p>
-      </section>
     </aside>
 
     <!-- メイン -->
@@ -720,11 +714,11 @@ const AseParser = (() => {
       const m = /^(.*?)(?:\.(ase|aseprite))?$/i.exec(name);
       state.title = m[1] || "sprite"; state.ext = (m[2] || "aseprite").toLowerCase();
       state.enabled = doc.layers.map((l) => l.visible);
-      if (!prefsPinned.has("cols")) state.opts.cols = Math.min(Math.max(1, Math.ceil(Math.sqrt(doc.frames.length))), 16);
+      state.opts.cols = Math.min(Math.max(1, Math.ceil(Math.sqrt(doc.frames.length))), 16);
       $("cols").value = state.opts.cols; $("cols-val").textContent = state.opts.cols;
       // セルサイズは読み込みごとにキャンバス全体へ戻す（サンプルだけは分割の例として 32×32 にする）
       Object.assign(state.opts, isSample
-        ? { split: true, cellW: 32, cellH: 32, ...(prefsPinned.has("layout") ? {} : { layout: "rows" }) }
+        ? { split: true, cellW: 32, cellH: 32, layout: "rows" }
         : { split: false, cellW: doc.header.width, cellH: doc.header.height });
       $("anim-cell").value = "";
       syncCutInputs();
@@ -1125,7 +1119,7 @@ const AseParser = (() => {
     const v = Math.max(0, Math.min(64, parseInt(e.target.value, 10) || 0)); state.opts[key] = v; relayout();
   });
   intInput("border", "border"); intInput("spacing", "spacing");
-  $("json-format").addEventListener("change", (e) => { state.opts.json = e.target.value; if (state.doc) renderJSON(); });
+  $("json-format").addEventListener("change", (e) => { state.opts.json = e.target.value; renderJSON(); });
   $("show-grid").addEventListener("change", (e) => { state.opts.grid = e.target.checked; drawView(); });
   let rz; addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => { drawView(); drawAnimFrame(); }, 120); });
 
@@ -1167,56 +1161,6 @@ const AseParser = (() => {
     try { await navigator.clipboard.writeText(t); setNote("JSONをクリップボードにコピーしました。"); }
     catch { const ta = $("json-out"); ta.focus(); ta.select(); setNote("自動コピーできなかったため、JSONを選択状態にしました。Ctrl+C でコピーしてください。"); }
   });
-
-  // ---------- 設定の記憶 ----------
-  // localStorage の imagetools:aseprite-sheet-converter:settings に JSON で保存する。読み書きに失敗しても通常どおり動く。
-  // 保存するのはユーザーが変更した（または前回から復元した）項目だけ。それ以外は読み込み時の自動値（列数・サンプルのレイアウト）に任せる
-  const PREFS_KEY = "imagetools:aseprite-sheet-converter:settings";
-  const intIn = (lo, hi) => (v) => Number.isInteger(v) && v >= lo && v <= hi;
-  const PREF_SPEC = {
-    layout: (v) => ["h", "v", "grid", "rows"].includes(v),
-    cols: intIn(1, 16), scale: intIn(1, 8), border: intIn(0, 64), spacing: intIn(0, 64), trimPad: intIn(0, 64),
-    json: (v) => v === "hash" || v === "array",
-    grid: (v) => typeof v === "boolean", trim: (v) => typeof v === "boolean", skipEmpty: (v) => typeof v === "boolean",
-    zoom: (v) => v === "fit" || [1, 2, 4].includes(v),
-  };
-  const PREF_DEFAULTS = Object.fromEntries(Object.keys(PREF_SPEC).map((k) => [k, state.opts[k]]));
-  const prefsPinned = new Set();
-  const prefStore = {
-    get() { try { const v = JSON.parse(localStorage.getItem(PREFS_KEY)); return v && typeof v === "object" ? v : null; } catch { return null; } },
-    set(v) { try { localStorage.setItem(PREFS_KEY, JSON.stringify(v)); } catch {} },
-    remove() { try { localStorage.removeItem(PREFS_KEY); } catch {} },
-  };
-  function savePrefs(...keys) {
-    keys.forEach((k) => prefsPinned.add(k));
-    prefStore.set(Object.fromEntries([...prefsPinned].map((k) => [k, state.opts[k]])));
-  }
-  function syncPrefInputs() {
-    const o = state.opts;
-    $("cols").value = o.cols; $("cols-val").textContent = o.cols;
-    $("scale").value = o.scale; $("scale-val").textContent = o.scale + "×";
-    $("border").value = o.border; $("spacing").value = o.spacing;
-    $("json-format").value = o.json; $("show-grid").checked = o.grid;
-    syncCutInputs();
-  }
-  function applyPrefs(p) {
-    for (const k in PREF_SPEC) if (k in p && PREF_SPEC[k](p[k])) { state.opts[k] = p[k]; prefsPinned.add(k); }
-    syncPrefInputs();
-  }
-  [["cols", "input", "cols"], ["scale", "input", "scale"], ["border", "input", "border"], ["spacing", "input", "spacing"],
-    ["trim-pad", "input", "trimPad"], ["trim-on", "change", "trim"], ["skip-empty", "change", "skipEmpty"],
-    ["json-format", "change", "json"], ["show-grid", "change", "grid"]]
-    .forEach(([id, type, key]) => $(id).addEventListener(type, () => savePrefs(key)));
-  document.querySelectorAll("[data-layout]").forEach((b) => b.addEventListener("click", () => savePrefs("layout")));
-  document.querySelectorAll("[data-zoom]").forEach((b) => b.addEventListener("click", () => savePrefs("zoom")));
-  $("reset-prefs").addEventListener("click", () => {
-    prefsPinned.clear(); prefStore.remove();
-    Object.assign(state.opts, PREF_DEFAULTS);
-    if (state.doc) state.opts.cols = Math.min(Math.max(1, Math.ceil(Math.sqrt(state.doc.frames.length))), 16);
-    syncPrefInputs(); recut();
-    setNote("設定を初期値に戻しました。");
-  });
-  { const saved = prefStore.get(); if (saved) applyPrefs(saved); }
 
   // ---------- boot ----------
   syncPlayBtn();
