@@ -135,7 +135,6 @@ h1{text-wrap:balance}
 .sheet-wrap{overflow:auto;max-height:50vh;border-radius:8px;border:1px solid var(--line);padding:8px}
 .sheet-wrap canvas{display:block}
 </style>
-</style>
 </head>
 <body>
 <div class="wrap">
@@ -147,7 +146,7 @@ h1{text-wrap:balance}
       <p class="hint">1枚絵の髪・服・体などに揺れと膨張・縮小を付けて、ループするスプライトシートを書き出します。処理はすべてブラウザ内で完結します。</p>
     </div>
     <div class="actions">
-      <button class="btn btn-ghost" type="button" id="btnReset">設定をリセット</button>
+      <button class="btn btn-ghost" type="button" id="btnResetPrefs" title="体の動き・フレーム・余白・列数・影響範囲の表示を初期値に戻します（読み込んだ画像と揺れ領域はそのまま）">設定をリセット</button>
       <button class="btn btn-ghost" type="button" id="themeToggle">テーマ: 自動</button>
     </div>
   </header>
@@ -228,7 +227,7 @@ h1{text-wrap:balance}
               <button class="btn btn-sm" type="button" id="btnAdd" disabled>領域を追加</button>
             </div>
           </div>
-          <div class="stage bg-checker"><canvas id="editor" width="64" height="64" aria-label="揺れ領域の編集"></canvas></div>
+          <div class="stage bg-checker"><canvas id="editor" width="64" height="64" role="img" aria-label="揺れ領域の編集"></canvas></div>
           <p class="hint mt-2">中心の丸をドラッグで移動、四角で幅と高さ、ひし形で根元の位置を変えます。</p>
         </section>
         <section class="panel p-4 min-w-0">
@@ -239,8 +238,9 @@ h1{text-wrap:balance}
               <button class="btn btn-sm" type="button" id="btnPlay" aria-pressed="true">一時停止</button>
             </div>
           </div>
-          <div class="stage bg-checker"><canvas id="preview" width="64" height="64" aria-label="アニメーションのプレビュー"></canvas></div>
+          <div class="stage bg-checker"><canvas id="preview" width="64" height="64" role="img" tabindex="0" aria-label="アニメーションのプレビュー(停止中はクリックか左右キーでコマ送り)"></canvas></div>
           <p class="hint mt-2" id="simInfo">—</p>
+          <p class="hint">一時停止中はプレビューをクリック(または ← → キー)でコマ送りできます。</p>
         </section>
       </div>
 
@@ -259,6 +259,8 @@ h1{text-wrap:balance}
               <label for="rCy">中心Y<input class="input" type="number" id="rCy" step="0.5"></label>
               <label for="rRx">幅/2<input class="input" type="number" id="rRx" step="0.5" min="1"></label>
               <label for="rRy">高さ/2<input class="input" type="number" id="rRy" step="0.5" min="1"></label>
+              <label for="rAx">根元X<input class="input" type="number" id="rAx" step="0.5"></label>
+              <label for="rAy">根元Y<input class="input" type="number" id="rAy" step="0.5"></label>
             </div>
             <label class="field" for="rFeather">ふちのぼかし<input class="range" type="range" id="rFeather" min="0.05" max="1" step="0.05"><output id="rFeatherOut"></output></label>
             <label class="check"><input class="checkbox" type="checkbox" id="rAnchorOn">根元を固定する(根元から先端へ揺れが強くなる)</label>
@@ -301,7 +303,7 @@ h1{text-wrap:balance}
           <h2 class="sec-title">スプライトシート</h2>
           <span class="hint" id="sheetSize">—</span>
         </div>
-        <div class="sheet-wrap bg-checker"><canvas id="sheet" class="pixelated" width="1" height="1" aria-label="スプライトシート"></canvas></div>
+        <div class="sheet-wrap bg-checker"><canvas id="sheet" class="pixelated" width="1" height="1" role="img" aria-label="スプライトシート"></canvas></div>
       </section>
     </main>
   </div>
@@ -464,12 +466,16 @@ const $ = (id) => document.getElementById(id);
 const TAU = Math.PI * 2;
 const SETTINGS_KEY = "jiggle-animator:settings";
 const DEFAULTS = { motion: "hop", amp: 3, cycles: 1, bodyMove: true, frames: 8, fps: 10, pad: 4, cols: 0, showWeight: true };
-const GLOBAL_KEYS = ["motion", "amp", "cycles", "bodyMove", "frames", "fps", "pad", "cols", "showWeight"];
-
+// 保存値は壊れていても使えるよう、整数・範囲・選択肢を確かめてから取り込む（範囲は各スライダーと同じ）
+const INT_RANGES = { amp: [0, 64], cycles: [1, 4], frames: [2, 48], fps: [1, 30], pad: [0, 64], cols: [0, 48] };
+const MOTIONS = ["hop", "bounce", "sway", "land", "none"];
 function loadSettings() {
-  const s = IT.store.get(SETTINGS_KEY, {}) || {};
+  const raw = IT.store.get(SETTINGS_KEY, {});
+  const s = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
   const out = { ...DEFAULTS };
-  for (const k of GLOBAL_KEYS) if (k in s && typeof s[k] === typeof DEFAULTS[k]) out[k] = s[k];
+  for (const [k, [lo, hi]] of Object.entries(INT_RANGES)) if (Number.isInteger(s[k])) out[k] = Math.min(hi, Math.max(lo, s[k]));
+  if (MOTIONS.includes(s.motion)) out.motion = s.motion;
+  for (const k of ["bodyMove", "showWeight"]) if (typeof s[k] === "boolean") out[k] = s[k];
   return out;
 }
 let S = loadSettings();
@@ -514,14 +520,22 @@ function wave(kind, u) {
     default: return 0;
   }
 }
-// 揺れ幅の上限（ぼかし幅を超えると画像が折り返すので抑える）
-function maxDisp(r) { return 0.9 * Math.min(r.rx, r.ry) * Math.max(r.feather, 0.15); }
+// 変形が折り返さない（逆算が収束する）よう、変位場の傾きの目安を 0.9 未満に抑える係数。
+// 揺れ: 重みの傾きは最大 1.5/幅 なので |d|×1.5/幅。幅はぼかしの帯と根元〜中心の短い方。
+// 拡縮: s×(p−c)×重み の傾きはおよそ |s|×(1 + 1.5/ぼかし + 根元側の項)。
+function foldLimits(r) {
+  const rmin = Math.min(r.rx, r.ry), rmax = Math.max(r.rx, r.ry);
+  const L = r.anchorOn ? Math.hypot(r.cx - r.ax, r.cy - r.ay) : Infinity;
+  const band = Math.max(0.5, Math.min(r.feather * rmin, L >= 1 ? L : Infinity));
+  return { kd: 1.5 / band, ks: 1 + 1.5 / r.feather + (L >= 1 && L < Infinity ? 1.5 * rmax / L : 0) };
+}
+const FOLD_MAX = 0.9;
 
 // 各フレームの体の位置・領域ごとの揺れ・拡縮を求める
 function simulate() {
   // 時間は「1ループ = 1」で正規化する。枚数は切り出す細かさ、再生速度は再生の速さだけを変え、動きの中身は変えない
   const N = S.frames, T = 1, loop = S.motion !== "land";
-  const P = loop ? T / S.cycles : T;
+  const P = S.motion === "land" ? T : T / S.cycles;
   const A = S.amp;
   let wMax = 1;
   for (const r of regions) wMax = Math.max(wMax, TAU * r.freq);
@@ -543,11 +557,13 @@ function simulate() {
       const t = f * SUB * dt;
       const b = S.bodyMove ? bp(t) : [0, 0];
       const rs = regions.map((r, i) => {
-        let dx = st[i].dx * r.gain, dy = st[i].dy * r.gain;
-        const len = Math.hypot(dx, dy), m = maxDisp(r);
-        if (len > m) { dx *= m / len; dy *= m / len; }
-        if (mode === "pixel") { dx = Math.round(dx); dy = Math.round(dy); }
-        const s = Math.max(-0.6, Math.min(0.6, st[i].s));
+        let dx = st[i].dx * r.gain, dy = st[i].dy * r.gain, s = st[i].s;
+        const { kd, ks } = foldLimits(r);
+        const lip = Math.hypot(dx, dy) * kd + Math.abs(s) * ks;
+        const clamped = lip > FOLD_MAX;
+        if (clamped) { const f = FOLD_MAX / lip; dx *= f; dy *= f; s *= f; }
+        // 丸めで上限を越えないよう、抑えたときは 0 側へ切り捨てる
+        if (mode === "pixel") { const q = clamped ? Math.trunc : Math.round; dx = q(dx); dy = q(dy); }
         return { dx, dy, s };
       });
       out.push({ bx: mode === "pixel" ? Math.round(b[0]) : b[0], by: mode === "pixel" ? Math.round(b[1]) : b[1], rs });
@@ -651,8 +667,10 @@ function renderFrame(fr, W, H, pad) {
 // ---------------------------------------------------------------- 再計算
 let recomputeTimer = 0;
 function scheduleRecompute(ms = 120) { clearTimeout(recomputeTimer); recomputeTimer = setTimeout(recompute, ms); }
+let recomputeCount = 0; // テストが再計算の完了を待つのに使う
 function recompute() {
   if (!src) return;
+  recomputeCount++;
   const t0 = performance.now();
   const pad = S.pad;
   frameW = src.w + pad * 2; frameH = src.h + pad * 2;
@@ -745,9 +763,14 @@ $("btnPlay").addEventListener("click", () => {
   $("btnPlay").setAttribute("aria-pressed", String(playing));
   lastDrawn = -1;
 });
-$("preview").addEventListener("click", () => {
+function stepFrame(delta) {
   if (playing || !frames.length) return;
-  pausedFrame = (pausedFrame + 1) % frames.length; lastDrawn = -1; // 停止中はクリックでコマ送り
+  pausedFrame = (pausedFrame + delta + frames.length) % frames.length; lastDrawn = -1;
+}
+// 停止中はクリックか左右キーでコマ送り
+$("preview").addEventListener("click", () => stepFrame(1));
+$("preview").addEventListener("keydown", (e) => {
+  if (e.key === "ArrowRight" || e.key === "ArrowLeft") { e.preventDefault(); stepFrame(e.key === "ArrowRight" ? 1 : -1); }
 });
 
 // ---------------------------------------------------------------- 編集キャンバス
@@ -876,9 +899,13 @@ function eventPos(e) {
 function hitTest(p) {
   const order = sel >= 0 ? [sel, ...regions.map((_, i) => i).filter((i) => i !== sel)] : regions.map((_, i) => i);
   if (sel >= 0) {
-    for (const h of handlesOf(regions[sel]).reverse()) {
-      if (Math.hypot(h.x * zoom - p.cx, h.y * zoom - p.cy) <= p.tol) return { i: sel, type: h.type };
+    // 小さい領域ではハンドル同士が重なるので、いちばん近いハンドルを選ぶ
+    let best = null, bestD = p.tol;
+    for (const h of handlesOf(regions[sel])) {
+      const d = Math.hypot(h.x * zoom - p.cx, h.y * zoom - p.cy);
+      if (d <= bestD) { best = h; bestD = d; }
     }
+    if (best) return { i: sel, type: best.type };
   }
   for (const i of order) {
     const r = regions[i], nx = (p.x - r.cx) / r.rx, ny = (p.y - r.cy) / r.ry;
@@ -932,6 +959,8 @@ function syncRegionNums() {
   const r = regions[sel];
   if (!r) return;
   $("rCx").value = r.cx; $("rCy").value = r.cy; $("rRx").value = r.rx; $("rRy").value = r.ry;
+  $("rAx").value = r.ax; $("rAy").value = r.ay;
+  $("rAx").disabled = $("rAy").disabled = !r.anchorOn;
 }
 function renderRegionUI() {
   const list = $("regionList");
@@ -966,7 +995,7 @@ for (const [id, k] of Object.entries(R_RANGES)) {
     onRegionEdit();
   });
 }
-for (const [id, k] of [["rCx", "cx"], ["rCy", "cy"], ["rRx", "rx"], ["rRy", "ry"]]) {
+for (const [id, k] of [["rCx", "cx"], ["rCy", "cy"], ["rRx", "rx"], ["rRy", "ry"], ["rAx", "ax"], ["rAy", "ay"]]) {
   $(id).addEventListener("change", (e) => {
     const r = regions[sel]; if (!r) return;
     let v = +e.target.value;
@@ -989,7 +1018,7 @@ $("rAnchorOn").addEventListener("change", (e) => {
   const r = regions[sel]; if (!r) return;
   r.anchorOn = e.target.checked;
   if (r.anchorOn && Math.hypot(r.ax - r.cx, r.ay - r.cy) < 1) { r.ax = r.cx; r.ay = snap(r.cy - r.ry); }
-  onRegionEdit();
+  syncRegionNums(); onRegionEdit();
 });
 $("btnDel").addEventListener("click", () => {
   if (sel < 0) return;
@@ -1018,7 +1047,7 @@ function applySettingsToUI() {
   $("motion").value = S.motion;
   $("bodyMove").checked = S.bodyMove;
   $("showWeight").checked = S.showWeight;
-  $("cycles").disabled = S.motion === "land" || S.motion === "none";
+  $("cycles").disabled = S.motion === "land"; // 「動かない」では拡縮の回数として使う
 }
 for (const k of G_RANGES) {
   $(k).addEventListener("input", (e) => {
@@ -1163,7 +1192,8 @@ function sampleSmooth() {
 $("btnSample").addEventListener("click", () => {
   if ($("sampleKind").value === "smooth") {
     const s = sampleSmooth();
-    if (S.amp < 8) { S.amp = 10; S.pad = Math.max(S.pad, 12); applySettingsToUI(); saveSettings(); }
+    // 大きい絵向けに振れ幅と余白を広げる。画面には出すが保存はしない（ほかの設定を変えたときに一緒に保存される）
+    if (S.amp < 8) { S.amp = 10; S.pad = Math.max(S.pad, 12); applySettingsToUI(); IT.toast("サンプルに合わせて振れ幅と余白を広げました"); }
     setSource("sample_jelly.png", s.canvas, s.regions, "smooth");
   } else {
     const s = samplePixel();
@@ -1181,7 +1211,7 @@ $("btnJson").addEventListener("click", () => {
   if (!frames.length) return;
   IT.saveFile(baseName() + ".json", new Blob([JSON.stringify(asepriteJson(), null, 2)], { type: "application/json" }));
 });
-$("btnReset").addEventListener("click", () => {
+$("btnResetPrefs").addEventListener("click", () => {
   S = { ...DEFAULTS }; IT.store.remove(SETTINGS_KEY);
   applySettingsToUI(); setupEditor(); scheduleRecompute(0);
   IT.toast("設定をリセットしました");
