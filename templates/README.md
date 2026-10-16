@@ -44,18 +44,19 @@
 | `--font-body` / `--font-mono` | 本文 / 等幅フォント | |
 
 テーマの状態は `<html data-theme="light|dark">`(属性なし = OS 設定に従う)で表し、
-`localStorage` の `imagetools:theme` に文字列で保存します(全ツール共通)。
+`localStorage` の `imagetools:theme` に文字列で保存します(全ツール共通、別タブの変更にも追従)。
+`IT.store` は JSON で保存するため、テーマの読み書きには使わず `IT.getTheme` / `IT.applyTheme` を使ってください。
 
 ### 共通 JS(`IT`)
 
 | API | 説明 |
 |---|---|
-| `IT.saveFile(filename, data)` | `window.claude.use('downloads')` が使えればそれで保存、無ければ `<a download>`。`data` は `Blob` / 文字列など |
+| `IT.saveFile(filename, data)` | `window.claude.use('downloads')` が使えればそれで保存、`window.claude` が無い通常ブラウザでは `<a download>`。結果はトーストで通知し、保存できたかを `Promise<boolean>` で返す。`data` は `Blob` / 文字列など |
 | `IT.canvasToBlob(canvas, type?)` | canvas を `Blob` に変換(`saveFile` と組み合わせて PNG 保存) |
 | `IT.initDrop({ zone, input, accept, onFiles, emptyMessage })` | ページ全体でドロップを受け付け、ドロップ中は `zone` に `.over` を付ける。`input`(`<input type=file>`)の選択も同じ `onFiles` に流す |
 | `IT.toast(msg, ms?)` | 画面下にトーストを表示 |
 | `IT.store.get(key, fallback)` / `set(key, value)` / `remove(key)` | `localStorage` の安全な読み書き(try/catch 済み、JSON で保存)。キーには自動で `imagetools:` が付く |
-| `IT.applyTheme('auto'|'light'|'dark')` / `IT.getTheme()` | テーマの変更・取得 |
+| `IT.applyTheme(theme)` / `IT.getTheme()` | テーマの変更・取得(`theme` は `auto` / `light` / `dark`)。テーマは `IT.store` ではなくこちらで扱う |
 
 ツール固有の設定を保存するときは、キーを `"<tool-name>:<設定名>"` のようにツール名で区切ってください。
 

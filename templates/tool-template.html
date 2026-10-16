@@ -49,6 +49,7 @@ body{margin:0;font-family:var(--font-body);font-size:14px;line-height:1.6}
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 h1{text-wrap:balance}
 [hidden]{display:none!important}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 @media (prefers-reduced-motion: reduce){*{transition:none!important}}
 /* common:end base */
 
@@ -90,7 +91,8 @@ h1{text-wrap:balance}
 .badge{display:inline-block;font-size:11px;font-weight:700;padding:1px 8px;border-radius:999px;background:var(--accent);color:var(--accent-fg)}
 .warn{color:var(--warn)}.danger{color:var(--danger)}
 .drop{display:block;border:1.5px dashed var(--line);border-radius:8px;padding:14px;text-align:center;cursor:pointer;transition:border-color .15s,background .15s}
-.drop.over,.drop:hover{border-color:var(--accent);background:var(--accent-soft)}
+.drop.over,.drop:hover,.drop:has(+ .sr-only:focus){border-color:var(--accent);background:var(--accent-soft)}
+.drop:has(+ .sr-only:focus-visible){outline:2px solid var(--accent);outline-offset:2px}
 .bg-checker{background-color:var(--chk-a);background-image:linear-gradient(45deg,var(--chk-b) 25%,transparent 25%,transparent 75%,var(--chk-b) 75%),linear-gradient(45deg,var(--chk-b) 25%,transparent 25%,transparent 75%,var(--chk-b) 75%);background-size:16px 16px;background-position:0 0,8px 8px}
 .stage{border-radius:8px;border:1px solid var(--line);overflow:auto;max-height:70vh;display:flex;align-items:flex-start;justify-content:center;padding:12px}
 .stage canvas{max-width:100%;height:auto}
@@ -100,7 +102,7 @@ h1{text-wrap:balance}
 
 /* common:begin header-style */
 .app-header{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 12px;margin-bottom:16px}
-.app-header .back{font-size:12px;color:var(--muted);text-decoration:none}
+.app-header .back{display:inline-block;padding:4px 0;font-size:12px;color:var(--muted);text-decoration:none}
 .app-header .back:hover{color:var(--accent)}
 .app-header .actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 /* common:end header-style */
@@ -122,7 +124,7 @@ h1{text-wrap:balance}
     </div>
     <div class="actions">
       <!-- ツール固有のヘッダーボタンはここに追加 -->
-      <button class="btn btn-ghost" type="button" id="themeToggle" aria-label="テーマ切替">テーマ: 自動</button>
+      <button class="btn btn-ghost" type="button" id="themeToggle">テーマ: 自動</button>
     </div>
   </header>
   <!-- common:end header -->
@@ -136,7 +138,7 @@ h1{text-wrap:balance}
           <span class="text-sm">画像をドロップ、またはクリックして選択</span><br>
           <span class="hint">ページのどこにドロップしても受け付けます</span>
         </label>
-        <input type="file" id="fileInput" accept="image/*" multiple hidden>
+        <input type="file" id="fileInput" class="sr-only" accept="image/*" multiple>
         <p class="hint" id="srcNote">未読み込み</p>
       </section>
       <section class="flex flex-col gap-2">
@@ -221,24 +223,41 @@ const IT = (() => {
   }
 
   // ---- ファイル保存（Claude アーティファクトでは downloads、通常ブラウザでは <a download>） ----
+  // "anchor" = 通常ブラウザ / null = アーティファクト内だが downloads が使えない / それ以外 = downloads ハンドル
   let downloadsP = null;
-  if (window.claude && typeof window.claude.use === "function") {
-    downloadsP = Promise.resolve().then(() => window.claude.use("downloads")).catch(() => null);
-  }
-  async function saveFile(filename, data) {
-    const dl = downloadsP ? await downloadsP : null;
-    if (dl) {
-      try { await dl.save({ filename, data }); toast(filename + " を保存しました"); }
-      catch (e) { toast(e && e.code === "declined" ? "保存をキャンセルしました" : "保存できませんでした（" + ((e && e.code) || "error") + "）"); }
-      return;
+  function getDownloads() {
+    if (!downloadsP) {
+      downloadsP = (window.claude && typeof window.claude.use === "function")
+        ? Promise.resolve().then(() => window.claude.use("downloads")).then((d) => d || null, () => null)
+        : Promise.resolve("anchor");
     }
-    const blob = data instanceof Blob ? data : new Blob([data]);
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url; a.download = filename;
-    document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 4000);
-    toast(filename + " を保存しました");
+    return downloadsP;
+  }
+  getDownloads();
+  const SAVE_ERRORS = { declined: "保存をキャンセルしました", rate_limited: "保存が続いたため一時的に制限されています。少し待ってからお試しください" };
+  async function saveFile(filename, data) {
+    const dl = await getDownloads();
+    if (dl === "anchor") {
+      const blob = data instanceof Blob ? data : new Blob([data]);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = filename;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 4000);
+      toast(filename + " を保存しました");
+      return true;
+    }
+    if (!dl) { toast("この表示ではファイルを保存できません"); return false; }
+    try {
+      const res = await dl.save({ filename, data });
+      const ok = !res || res.status === undefined || res.status === "saved";
+      if (ok) toast(filename + " を保存しました");
+      return ok;
+    } catch (e) {
+      const code = (e && e.code) || "error";
+      toast(SAVE_ERRORS[code] || "保存できませんでした（" + code + "）");
+      return false;
+    }
   }
   function canvasToBlob(canvas, type = "image/png") {
     return new Promise((res, rej) => canvas.toBlob((b) => (b ? res(b) : rej(new Error("toBlob failed"))), type));
@@ -275,6 +294,14 @@ const IT = (() => {
   }
 
   initThemeToggle();
+  // 別タブでテーマを変えたら追従する（保存はし直さない）
+  window.addEventListener("storage", (e) => {
+    if (e.key !== THEME_KEY) return;
+    const t = e.newValue === "light" || e.newValue === "dark" ? e.newValue : null;
+    if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme;
+    const btn = document.getElementById("themeToggle");
+    if (btn) btn.textContent = THEME_LABEL[getTheme()];
+  });
   return { store, toast, saveFile, canvasToBlob, initDrop, applyTheme, getTheme };
 })();
 </script>
