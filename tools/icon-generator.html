@@ -145,6 +145,7 @@ textarea.input{width:100%;resize:vertical}
       <p class="hint">1 枚の元画像から favicon・iOS・Android・Windows 用のアイコンをまとめて作り、ZIP で保存します。処理はすべてブラウザ内で完結します。</p>
     </div>
     <div class="actions">
+      <button class="btn btn-ghost" type="button" id="btnResetPrefs" title="出力するアイコン・調整・マニフェストの設定を初期値に戻します">設定をリセット</button>
       <button class="btn btn-ghost" type="button" id="themeToggle">テーマ: 自動</button>
     </div>
   </header>
@@ -832,10 +833,14 @@ function syncControls() {
   $("manifestSec").hidden = !S.presets.web;
 }
 
-function bindInputs() {
+function fillInputs() {
   $("pad").value = S.pad; $("radius").value = S.radius;
   $("bgColor").value = S.bgColor; $("themeColor").value = S.themeColor;
   $("customSizes").value = S.custom; $("appName").value = S.appName; $("shortName").value = S.shortName;
+  for (const p of PRESETS) $("preset-" + p.id).checked = S.presets[p.id];
+}
+
+function bindInputs() {
   const on = (id, ev, fn) => $(id).addEventListener(ev, () => { fn($(id).value); saveSettings(); render(); });
   on("pad", "input", (v) => { S.pad = Number(v); });
   on("radius", "input", (v) => { S.radius = Number(v); });
@@ -847,6 +852,14 @@ function bindInputs() {
   for (const b of document.querySelectorAll("[data-bg]")) b.addEventListener("click", () => { S.bg = b.dataset.bg; saveSettings(); render(); });
   for (const b of document.querySelectorAll("[data-scale]")) b.addEventListener("click", () => { S.scale = b.dataset.scale; saveSettings(); render(); });
 }
+
+$("btnResetPrefs").addEventListener("click", () => {
+  Object.assign(S, structuredClone(DEFAULTS));
+  IT.store.remove(SETTINGS_KEY);
+  fillInputs();
+  render();
+  IT.toast("設定をリセットしました");
+});
 
 IT.initDrop({
   zone: "drop",
@@ -874,6 +887,7 @@ $("btnSample").addEventListener("click", async () => {
 });
 
 buildPresetList();
+fillInputs();
 bindInputs();
 render();
 </script>
