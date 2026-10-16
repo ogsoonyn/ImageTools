@@ -7,8 +7,9 @@ GitHub Pages などの Web サーバー経由で開いたときだけ使えま�
 | --- | --- | --- |
 | `keyout/colon183.png` 〜 `keyout/colon191.png` | `tools/keyout-sprite-packer.html` | マゼンタ(#FF00FF)背景の連番エフェクト画像 9 枚 |
 | `aseprite/slime.aseprite` | `tools/aseprite-sheet-converter.html` | 複数レイヤー・タグ付きのスライムのアニメーション |
+| `icon/sample-icon.png` | `tools/icon-generator.html` | 図形だけで描いた 1024×1024 の透過アイコン(山と太陽) |
 
 ## 出所とライセンス
 
-いずれも、もともと各ツールの HTML に base64 で埋め込まれていたサンプルをそのままファイルに書き出したものです（Issue #7）。
+`keyout/` と `aseprite/` は、もともと各ツールの HTML に base64 で埋め込まれていたサンプルをそのままファイルに書き出したものです（Issue #7）。`icon/` はアイコン一括生成ツールの追加時に、図形を組み合わせてプログラムで描いたものです。
 本リポジトリの作者が用意した素材で、リポジトリ全体と同じ [MIT License](../LICENSE) で提供します。
