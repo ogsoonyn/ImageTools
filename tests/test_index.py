@@ -39,6 +39,7 @@ def test_card_link_is_single_tab_stop(browser: Browser, base_url: str):
     # キーボード操作ではカードごとにタイトルのリンク1つだけにフォーカスが止まる
     page = browser.new_page()
     try:
+        page.route(re.compile(r"^https://fonts\.(googleapis|gstatic)\.com/"), lambda route: route.abort())
         page.goto(f"{base_url}/index.html", wait_until="domcontentloaded")
         cards = page.locator(".card")
         for i in range(cards.count()):
