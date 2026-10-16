@@ -1,0 +1,16 @@
+[project]
+name = "imagetools"
+version = "0.1.0"
+description = "画像処理系の単一HTMLツール集(スモークテスト用の開発環境)"
+requires-python = ">=3.12"
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "playwright>=1.64.0",
+    "pytest>=9.1.1",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["tests"]
