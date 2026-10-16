@@ -133,7 +133,7 @@ canvas.pixel{image-rendering:pixelated;image-rendering:crisp-edges;display:block
 .bg-bg{background-color:var(--bg)}
 .px-1{padding-left:4px;padding-right:4px}.px-3{padding-left:12px;padding-right:12px}.py-0\.5{padding-top:2px;padding-bottom:2px}.py-2{padding-top:8px;padding-bottom:8px}
 .text-right{text-align:right}.text-\[11px\]{font-size:11px}.text-\[12px\]{font-size:12px}.text-\[13px\]{font-size:13px}
-.font-semibold{font-weight:600}.text-fg{color:var(--fg)}
+.font-semibold{font-weight:600}.text-fg{color:var(--fg)}.text-amber{color:var(--amber)}
 @media (min-width:768px){.md\:grid-cols-\[minmax\(0\2c 320px\)_minmax\(0\2c 1fr\)\]{grid-template-columns:minmax(0,320px) minmax(0,1fr)}}
 @media (min-width:1024px){.lg\:grid-cols-\[320px_minmax\(0\2c 1fr\)\]{grid-template-columns:320px minmax(0,1fr)}}
 /* ツール固有の部品 */
@@ -216,7 +216,7 @@ canvas.pixel{image-rendering:pixelated;image-rendering:crisp-edges;display:block
         </div>
         <label class="flex items-center justify-between gap-3 text-[13px]" for="skip-empty">空のスプライトを除外する
           <input id="skip-empty" class="toggle" type="checkbox" checked></label>
-        <div id="trim-summary" class="rounded-md bg-bg border border-line px-3 py-2 text-[12px] num flex flex-col gap-0.5"></div>
+        <div id="trim-summary" class="rounded-md bg-bg border px-3 py-2 text-[12px] num flex flex-col gap-0.5"></div>
       </section>
 
       <section class="side-sec p-4 flex flex-col gap-4">
@@ -281,7 +281,7 @@ canvas.pixel{image-rendering:pixelated;image-rendering:crisp-edges;display:block
             </div>
           </div>
         </div>
-        <div id="sheet-scroll" class="mt-3 overflow-auto rounded-md border border-line max-h-[60vh] min-h-[160px] bg-bg">
+        <div id="sheet-scroll" class="mt-3 overflow-auto rounded-md border max-h-[60vh] min-h-[160px] bg-bg">
           <div id="sheet-holder" class="bg-checker inline-block align-top"><canvas id="sheet-view" class="pixel"></canvas></div>
         </div>
         <p class="text-[11px] text-muted mt-2">ファイルはページのどこにドロップしても開けます。枠と番号は確認用の表示で、書き出すPNGには含まれません。</p>
@@ -293,11 +293,11 @@ canvas.pixel{image-rendering:pixelated;image-rendering:crisp-edges;display:block
             <span class="sec-title">アニメーション</span>
             <span id="anim-frame" class="num text-[12px] text-muted"></span>
           </div>
-          <div class="mt-3 bg-checker rounded-md border border-line grid place-items-center aspect-square max-w-full overflow-hidden">
+          <div class="mt-3 bg-checker rounded-md border grid place-items-center aspect-square max-w-full overflow-hidden">
             <canvas id="anim-view" class="pixel"></canvas>
           </div>
           <div class="mt-3 flex flex-wrap items-center gap-2">
-            <button id="anim-play" class="btn btn-sm" type="button" aria-pressed="true">一時停止</button>
+            <button id="anim-play" class="btn btn-sm" type="button">一時停止</button>
             <select id="anim-cell" class="select" aria-label="再生するセル"></select>
             <select id="anim-tag" class="select flex-1" aria-label="再生する範囲"></select>
           </div>
@@ -849,26 +849,26 @@ const IT = (() => {
     doc: null, title: "sprite", ext: "aseprite", isSample: false,
     enabled: [], frames: [], sheet: document.createElement("canvas"),
     opts: { ...DEFAULTS, ...savedSettings, split: false, cellW: 1, cellH: 1 },
-    // 列数を保存済み（または手で変えた）なら、ファイルを開いたときの自動設定より優先する
-    colsFixed: "cols" in savedSettings,
+    // ユーザーが変えた設定だけを保存する（サンプル読み込みで一時的に変わった値は保存しない）
+    userSettings: { ...savedSettings },
     frameData: [], cut: null, L: null,
     anim: { playing: !matchMedia("(prefers-reduced-motion: reduce)").matches, seq: [], pos: 0, timer: 0 },
   };
-  function saveSettings() {
-    const o = {};
-    for (const k in DEFAULTS) if (k !== "cols" || state.colsFixed) o[k] = state.opts[k];
-    IT.store.set(SETTINGS_KEY, o);
+  function saveSetting(key) {
+    state.userSettings[key] = state.opts[key];
+    IT.store.set(SETTINGS_KEY, state.userSettings);
   }
 
   // ---------- file loading ----------
   async function loadBuffer(buf, name, isSample) {
     try {
+      if (buf instanceof Blob) buf = await buf.arrayBuffer();
       const doc = await AseParser.parse(buf);
       state.doc = doc; state.isSample = isSample;
       const m = /^(.*?)(?:\.(ase|aseprite))?$/i.exec(name);
       state.title = m[1] || "sprite"; state.ext = (m[2] || "aseprite").toLowerCase();
       state.enabled = doc.layers.map((l) => l.visible);
-      if (!state.colsFixed) state.opts.cols = Math.min(Math.max(1, Math.ceil(Math.sqrt(doc.frames.length))), 16);
+      if (!("cols" in state.userSettings)) state.opts.cols = Math.min(Math.max(1, Math.ceil(Math.sqrt(doc.frames.length))), 16);
       $("cols").value = state.opts.cols; $("cols-val").textContent = state.opts.cols;
       // セルサイズは読み込みごとにキャンバス全体へ戻す（サンプルだけは分割の例として 32×32 にする）
       Object.assign(state.opts, isSample
@@ -904,7 +904,7 @@ const IT = (() => {
     zone: "drop",
     input: "file-input",
     accept: (f) => /\.(ase|aseprite)$/i.test(f.name),
-    onFiles: async (files) => loadBuffer(await files[0].arrayBuffer(), files[0].name, false),
+    onFiles: (files) => loadBuffer(files[0], files[0].name, false),
     emptyMessage: ".ase / .aseprite ファイルが見つかりませんでした",
   });
 
@@ -1223,7 +1223,7 @@ const IT = (() => {
       Math.max(16, state.doc.frames[fi].duration || 100));
   }
   function syncPlayBtn() {
-    const b = $("anim-play"); b.textContent = state.anim.playing ? "一時停止" : "再生"; b.setAttribute("aria-pressed", String(state.anim.playing));
+    const b = $("anim-play"); b.textContent = state.anim.playing ? "一時停止" : "再生";
   }
   $("anim-play").addEventListener("click", () => { state.anim.playing = !state.anim.playing; syncPlayBtn(); tick(); });
   $("anim-tag").addEventListener("change", () => { buildSeq(); tick(); });
@@ -1255,6 +1255,8 @@ const IT = (() => {
     document.querySelectorAll("[data-zoom]").forEach((b) => b.classList.toggle("is-active", b.dataset.zoom === String(o.zoom)));
     $("cols-row").hidden = o.layout !== "grid";
     $("rows-note").hidden = o.layout !== "rows";
+    $("split-row").hidden = !o.split;
+    $("trim-row").hidden = !o.trim;
   }
   function syncCutInputs() {
     const o = state.opts;
@@ -1269,29 +1271,29 @@ const IT = (() => {
     state.opts[key] = v; clearTimeout(cutT); cutT = setTimeout(recut, 150);
   });
   cellInput("cell-w", "cellW"); cellInput("cell-h", "cellH");
-  $("trim-on").addEventListener("change", (e) => { state.opts.trim = e.target.checked; saveSettings(); recut(); });
-  $("trim-pad").addEventListener("input", (e) => { state.opts.trimPad = Math.max(0, Math.min(64, parseInt(e.target.value, 10) || 0)); saveSettings(); recut(); });
-  $("skip-empty").addEventListener("change", (e) => { state.opts.skipEmpty = e.target.checked; saveSettings(); recut(); });
+  $("trim-on").addEventListener("change", (e) => { state.opts.trim = e.target.checked; saveSetting("trim"); recut(); });
+  $("trim-pad").addEventListener("input", (e) => { state.opts.trimPad = Math.max(0, Math.min(64, parseInt(e.target.value, 10) || 0)); saveSetting("trimPad"); recut(); });
+  $("skip-empty").addEventListener("change", (e) => { state.opts.skipEmpty = e.target.checked; saveSetting("skipEmpty"); recut(); });
   document.querySelectorAll("[data-layout]").forEach((b) => b.addEventListener("click", () => {
-    state.opts.layout = b.dataset.layout; saveSettings(); syncSettingInputs(); relayout();
+    state.opts.layout = b.dataset.layout; saveSetting("layout"); syncSettingInputs(); relayout();
   }));
   document.querySelectorAll("[data-zoom]").forEach((b) => b.addEventListener("click", () => {
-    state.opts.zoom = b.dataset.zoom === "fit" ? "fit" : +b.dataset.zoom; saveSettings(); syncSettingInputs(); drawView();
+    state.opts.zoom = b.dataset.zoom === "fit" ? "fit" : +b.dataset.zoom; saveSetting("zoom"); syncSettingInputs(); drawView();
   }));
   $("cols").addEventListener("input", (e) => {
-    state.opts.cols = +e.target.value; state.colsFixed = true; $("cols-val").textContent = e.target.value; saveSettings(); relayout();
+    state.opts.cols = +e.target.value; $("cols-val").textContent = e.target.value; saveSetting("cols"); relayout();
   });
-  $("scale").addEventListener("input", (e) => { state.opts.scale = +e.target.value; $("scale-val").textContent = e.target.value + "×"; saveSettings(); relayout(); });
+  $("scale").addEventListener("input", (e) => { state.opts.scale = +e.target.value; $("scale-val").textContent = e.target.value + "×"; saveSetting("scale"); relayout(); });
   const intInput = (id, key) => $(id).addEventListener("input", (e) => {
-    const v = Math.max(0, Math.min(64, parseInt(e.target.value, 10) || 0)); state.opts[key] = v; saveSettings(); relayout();
+    const v = Math.max(0, Math.min(64, parseInt(e.target.value, 10) || 0)); state.opts[key] = v; saveSetting(key); relayout();
   });
   intInput("border", "border"); intInput("spacing", "spacing");
-  $("json-format").addEventListener("change", (e) => { state.opts.json = e.target.value; saveSettings(); renderJSON(); });
-  $("show-grid").addEventListener("change", (e) => { state.opts.grid = e.target.checked; saveSettings(); drawView(); });
+  $("json-format").addEventListener("change", (e) => { state.opts.json = e.target.value; saveSetting("json"); if (state.doc) renderJSON(); });
+  $("show-grid").addEventListener("change", (e) => { state.opts.grid = e.target.checked; saveSetting("grid"); drawView(); });
   $("reset-settings").addEventListener("click", () => {
     IT.store.remove(SETTINGS_KEY);
     Object.assign(state.opts, DEFAULTS);
-    state.colsFixed = false;
+    state.userSettings = {};
     if (state.doc) state.opts.cols = Math.min(Math.max(1, Math.ceil(Math.sqrt(state.doc.frames.length))), 16);
     syncSettingInputs(); recut();
     IT.toast("設定をリセットしました");

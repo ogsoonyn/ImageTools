@@ -57,3 +57,29 @@ def test_broken_settings_are_ignored(browser: Browser, base_url: str):
         assert errors == []
     finally:
         context.close()
+
+
+def test_sample_layout_is_not_saved(base_url: str, browser: Browser):
+    """サンプル読み込みで一時的に変わるレイアウト(セルごとに行)は、ほかの設定を変えても保存されない。"""
+    context = browser.new_context()
+    try:
+        page = context.new_page()
+        errors: list[str] = []
+        page.on("pageerror", lambda e: errors.append(str(e)))
+        page.goto(f"{base_url}/{PATH}")
+        # ファイルを開く前に設定を変えても例外にならない
+        page.locator("#json-format").select_option("array")
+        page.get_by_role("button", name="グリッド", exact=True).click()
+
+        load = page.get_by_role("button", name="サンプルを読み込む", exact=True)
+        load.click()
+        expect(load).to_be_enabled(timeout=10_000)
+        expect(page.get_by_role("button", name="セルごとに行", exact=True)).to_have_class("btn btn-sm is-active")
+        page.locator("#scale").fill("2")
+
+        page.reload()
+        expect(page.get_by_role("button", name="グリッド", exact=True)).to_have_class("btn btn-sm is-active")
+        expect(page.locator("#scale")).to_have_value("2")
+        assert errors == []
+    finally:
+        context.close()
