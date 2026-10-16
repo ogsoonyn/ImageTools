@@ -3,7 +3,9 @@
 `index.html` と `tools/*.html` をすべてブラウザ(Chromium)で開き、次を確認します。
 
 - コンソールに error / warning が出ないこと、ページ例外が起きないこと
-- サンプルを読み込んだ状態で「PNGを保存」「JSONを保存」を押すとダウンロードが発生すること
+- 各ツールで「サンプルを読み込む」を押して `samples/` のサンプルを読み込み、「PNGを保存」「JSONを保存」で中身のある PNG / JSON がダウンロードされること
+
+Google Fonts へのリクエストはテスト内で空の応答に差し替えています(外部CDNの一時的な不調でテストが落ちないように)。サンプルは `fetch` で読み込むため、`file://` ではなく HTTP 経由で開く必要があります。
 
 テストはリポジトリのルートを一時的な静的サーバー(`http://127.0.0.1:<空きポート>`)で配信してから開くので、サーバーを手で立てる必要はありません。PR ごとに GitHub Actions(`.github/workflows/smoke.yml`)でも同じテストが走ります。
 
@@ -51,6 +53,7 @@ BASE_URL=http://localhost:8000 uv run pytest
 ```powershell
 # ターミナル2 — Windows (PowerShell)
 $env:BASE_URL = "http://localhost:8000"; uv run pytest
+Remove-Item Env:BASE_URL   # 後続の実行に残らないよう戻す
 ```
 
 > `python -m http.server` は `<meta charset>` のないページを UTF-8 として返さないことがあり、文字化けしてボタンが見つからずテストが失敗する場合があります。その場合は `BASE_URL` を付けずに実行してください(テスト内蔵のサーバーは GitHub Pages と同じく `charset=utf-8` を付けて返します)。
@@ -58,6 +61,17 @@ $env:BASE_URL = "http://localhost:8000"; uv run pytest
 ### 既存の Chromium を使う
 
 `playwright install` の代わりに、インストール済みの Chromium を `PLAYWRIGHT_CHROMIUM_EXECUTABLE` で指定できます。
+
+```bash
+# Ubuntu
+PLAYWRIGHT_CHROMIUM_EXECUTABLE=/usr/bin/chromium uv run pytest
+```
+
+```powershell
+# Windows (PowerShell)
+$env:PLAYWRIGHT_CHROMIUM_EXECUTABLE = "C:\Program Files\Google\Chrome\Application\chrome.exe"; uv run pytest
+Remove-Item Env:PLAYWRIGHT_CHROMIUM_EXECUTABLE
+```
 
 ## 許容している警告
 

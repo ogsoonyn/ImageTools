@@ -42,6 +42,7 @@ ImageTools/
 ├── tools/       各ツールの HTML(1ツール = 1ファイル)
 ├── templates/   新規ツール用のテンプレートと共通UIの仕様
 ├── samples/     ツールで試せるサンプル素材
+├── tests/       Playwright のスモークテスト(PR ごとに GitHub Actions で実行)
 ├── docs/
 │   └── images/  README 用のスクリーンショット
 ├── .nojekyll    GitHub Pages で Jekyll 処理を無効にする
@@ -56,6 +57,7 @@ ImageTools/
 3. 外部のJS/CSS(Tailwind CDN を含む)は読み込まず、1ファイルで完結させます。既存ツールと同様、フォントは Google Fonts から読み込んで構いません。
 4. この README の「ツール一覧」と、トップの一覧ページ(`index.html`)にツールを追加します。
 5. スクリーンショットを `docs/images/<ツールのファイル名>.png` に置き、README に貼ります。
+6. `uv run pytest` でスモークテストを実行し、コンソールのエラー/警告が出ないことを確認します。手順は [`tests/README.md`](tests/README.md) を参照してください(`tools/*.html` は自動でテスト対象になります。「PNGを保存」「JSONを保存」ボタンがあるツールには「サンプルを読み込む」ボタンも必要です)。
 
 ## ライセンスと素材の出所
 
