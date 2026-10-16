@@ -125,7 +125,6 @@ h1{text-wrap:balance}
 .tile[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft)}
 .tile .box{width:96px;height:96px;display:flex;align-items:center;justify-content:center;border-radius:6px}
 .tile canvas{display:block;max-width:96px;max-height:96px}
-.tile canvas.px{image-rendering:pixelated}
 .tile .name{font-family:var(--font-mono);font-size:11px;line-height:1.4;overflow-wrap:anywhere;color:var(--muted)}
 .tile .size{font-family:var(--font-mono);font-size:12px;font-weight:700}
 .big{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start}
@@ -230,10 +229,10 @@ textarea.input{width:100%;resize:vertical}
       <section>
         <h2 class="sec-title mb-2">プレビュー</h2>
         <div class="big">
-          <div class="stage bg-checker"><canvas id="bigPreview" width="256" height="256" aria-label="選択中のアイコンの拡大プレビュー"></canvas></div>
+          <div class="stage bg-checker"><canvas id="bigPreview" width="256" height="256" role="img" aria-label="選択中のアイコンの拡大プレビュー"></canvas></div>
           <div class="min-w-0 flex flex-col gap-1">
             <p class="font-bold mono" id="selName">—</p>
-            <p class="hint" id="selInfo">元画像を読み込むと、各サイズのアイコンがここに並びます</p>
+            <p class="hint" id="selInfo" aria-live="polite">元画像を読み込むと、各サイズのアイコンがここに並びます</p>
           </div>
         </div>
       </section>
@@ -406,7 +405,7 @@ const SETTINGS_KEY = "icon-generator:settings";
 const SVG_RASTER = 1024; // SVG はこの大きさ(長辺)でラスタライズしてから縮小する
 
 // 出力プリセット。path は ZIP 内のパス。ico は 1 ファイルに入れるサイズの一覧
-// opaque: 透過できない出力(背景色で塗る) / noRadius: OS 側で角を丸めるので角丸を付けない / maskable: セーフゾーン(中央 80%)に収める
+// opaque: 透過できない出力(背景色で塗る) / noRadius: OS 側で角を丸めるので角丸を付けない / maskable: 中央 80% の大きさに縮める(OS のマスクで確実に残るのは中央の直径 80% の円の内側)
 const PRESETS = [
   { id: "web", label: "Web(favicon 一式)", desc: "favicon.ico、apple-touch-icon、Android Chrome 用 192/512、maskable、site.webmanifest、HTML スニペット", items: [
     { path: "web/favicon.ico", ico: [16, 32, 48] },
@@ -485,7 +484,9 @@ async function toCanvas(blob, name) {
   let w, h, source;
   if (isSvg) {
     source = await loadImageElement(blob);
-    w = source.naturalWidth || SVG_RASTER; h = source.naturalHeight || SVG_RASTER;
+    // width/height/viewBox のどれも無い SVG はブラウザが 300×150 とみなすので、正方形として扱う
+    const sized = /<svg\b[^>]*\s(?:viewBox|width|height)\s*=/i.test(await blob.text());
+    w = (sized && source.naturalWidth) || SVG_RASTER; h = (sized && source.naturalHeight) || SVG_RASTER;
     const k = SVG_RASTER / Math.max(w, h);
     w = Math.max(1, Math.round(w * k)); h = Math.max(1, Math.round(h * k));
   } else {
@@ -514,14 +515,17 @@ function buildLevels(base) {
   return levels;
 }
 
+let loadSeq = 0; // 読み込みが重なったときは、最後に始めたものだけを採用する
 async function setSource(blob, name) {
+  const seq = ++loadSeq;
   let c;
   try { c = await toCanvas(blob, name); }
-  catch (e) { IT.toast(name + " を読み込めませんでした"); return false; }
+  catch (e) { if (seq !== loadSeq) return null; IT.toast(name + " を読み込めませんでした"); return false; }
+  if (seq !== loadSeq) return null; // 後から始めた読み込みに置き換えられた
   src = { name, w: c.width, h: c.height, levels: buildLevels(c) };
   $("srcNote").textContent = name + "(" + c.width + "×" + c.height + ")";
   selectedKey = null;
-  render();
+  renderNow();
   return true;
 }
 
@@ -565,10 +569,11 @@ let renderQueued = false;
 function render() {
   if (renderQueued) return;
   renderQueued = true;
-  requestAnimationFrame(() => { renderQueued = false; renderNow(); });
+  requestAnimationFrame(() => { if (renderQueued) renderNow(); });
 }
 
 function renderNow() {
+  renderQueued = false;
   syncControls();
   const wrap = $("tilesWrap");
   wrap.textContent = "";
@@ -635,8 +640,9 @@ function selectTile(key) {
   $("btnPng").disabled = !t;
   if (!t) return;
   $("selName").textContent = pngName(t);
+  $("bigPreview").setAttribute("aria-label", pngName(t) + " の拡大プレビュー");
   const notes = [t.size + "×" + t.size + " px", "ZIP 内: " + t.item.path];
-  if (t.item.maskable) notes.push("maskable: 中央 80% に収めています");
+  if (t.item.maskable) notes.push("maskable: 80% に縮めています。確実に表示されるのは中央の直径 80% の円の内側です");
   else if (t.item.opaque) notes.push("背景色で塗りつぶしています(透過不可)");
   $("selInfo").textContent = notes.join(" · ");
 }
@@ -647,7 +653,7 @@ function drawBig(t) {
   g.clearRect(0, 0, c.width, c.height);
   if (!t) { $("selName").textContent = "—"; if (!src) $("selInfo").textContent = "元画像を読み込むと、各サイズのアイコンがここに並びます"; return; }
   // 小さいアイコンはドットが見えるように拡大し、大きいものはなめらかに縮小して表示する
-  g.imageSmoothingEnabled = t.size > c.width;
+  g.imageSmoothingEnabled = !(t.size < c.width && c.width % t.size === 0);
   g.imageSmoothingQuality = "high";
   g.drawImage(t.canvas, 0, 0, c.width, c.height);
 }
@@ -656,8 +662,10 @@ function updateWarn(list) {
   const msgs = [];
   if (src) {
     if (src.w !== src.h) msgs.push("正方形ではないため、中央に配置して余白で正方形にしています。");
-    const max = Math.max(0, ...list.map(({ item }) => Math.max(...(item.ico || [item.size]))));
-    if (max > Math.min(src.w, src.h) && S.scale === "smooth") msgs.push("元画像が " + max + "px より小さいため、大きいサイズは拡大になりぼやけます。ドット絵なら「ドット絵(ニアレスト)」を選んでください。");
+    // 実際に描く大きさ(余白・maskable の縮小込み)が元画像の長辺を超えるときだけ警告する
+    const fit = (item) => Math.max(...(item.ico || [item.size])) * (1 - 2 * S.pad / 100) * (item.maskable ? 0.8 : 1);
+    const max = Math.round(Math.max(0, ...list.map(({ item }) => fit(item))));
+    if (max > Math.max(src.w, src.h) && S.scale === "smooth") msgs.push("元画像が " + max + "px より小さいため、大きいサイズは拡大になりぼやけます。ドット絵なら「ドット絵(ニアレスト)」を選んでください。");
   }
   $("srcWarn").textContent = msgs.join(" ");
   $("srcWarn").hidden = !msgs.length;
@@ -671,6 +679,40 @@ function pngName(t) {
 }
 
 async function blobBytes(blob) { return new Uint8Array(await blob.arrayBuffer()); }
+
+// 透過できない出力は、アルファチャンネルを持たない RGB の PNG で書き出す
+// (canvas.toBlob は常に RGBA になり、App Store は App アイコンのアルファチャンネルを拒否するため)
+async function encodeRgbPng(canvas) {
+  const w = canvas.width, h = canvas.height;
+  const px = canvas.getContext("2d").getImageData(0, 0, w, h).data;
+  const raw = new Uint8Array((w * 3 + 1) * h);
+  for (let y = 0, o = 0; y < h; y++) {
+    raw[o++] = 0; // フィルタなし
+    for (let x = 0, i = y * w * 4; x < w; x++, i += 4) { raw[o++] = px[i]; raw[o++] = px[i + 1]; raw[o++] = px[i + 2]; }
+  }
+  const zlib = await blobBytes(await new Response(new Blob([raw]).stream().pipeThrough(new CompressionStream("deflate"))).blob());
+  const enc = new TextEncoder();
+  const chunk = (type, data) => {
+    const out = new Uint8Array(12 + data.length);
+    const dv = new DataView(out.buffer);
+    dv.setUint32(0, data.length);
+    out.set(enc.encode(type), 4); out.set(data, 8);
+    dv.setUint32(8 + data.length, crc32(out.subarray(4, 8 + data.length)));
+    return out;
+  };
+  const ihdr = new Uint8Array(13);
+  const hv = new DataView(ihdr.buffer);
+  hv.setUint32(0, w); hv.setUint32(4, h);
+  ihdr[8] = 8; ihdr[9] = 2; // 8bit, トゥルーカラー(RGB)
+  const sig = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  return blobBytes(new Blob([sig, chunk("IHDR", ihdr), chunk("IDAT", zlib), chunk("IEND", new Uint8Array(0))]));
+}
+async function pngBytes(t) {
+  if (t.item.opaque && typeof CompressionStream === "function") {
+    try { return await encodeRgbPng(t.canvas); } catch (e) { /* 失敗したら通常の PNG にする */ }
+  }
+  return blobBytes(await IT.canvasToBlob(t.canvas));
+}
 
 // PNG を格納した ICO(Windows Vista 以降・主要ブラウザが対応)
 function encodeIco(entries) {
@@ -775,7 +817,7 @@ async function buildZip() {
     byPath.get(t.item.path).frames.push(t);
   }
   for (const [path, { item, frames }] of byPath) {
-    const pngs = await Promise.all(frames.map(async (t) => ({ size: t.size, png: await blobBytes(await IT.canvasToBlob(t.canvas)) })));
+    const pngs = await Promise.all(frames.map(async (t) => ({ size: t.size, png: await pngBytes(t) })));
     files.push({ path, data: item.ico ? encodeIco(pngs) : pngs[0].png });
   }
   if (S.presets.web) {
@@ -796,7 +838,7 @@ $("btnZip").addEventListener("click", async () => {
 $("btnPng").addEventListener("click", async () => {
   const t = tiles.find((x) => x.key === selectedKey);
   if (!t) return;
-  try { await IT.saveFile(pngName(t), await IT.canvasToBlob(t.canvas)); }
+  try { await IT.saveFile(pngName(t), new Blob([await pngBytes(t)], { type: "image/png" })); }
   catch (e) { IT.toast("PNGを作成できませんでした"); }
 });
 $("btnCopy").addEventListener("click", async () => {
@@ -880,10 +922,9 @@ $("btnSample").addEventListener("click", async () => {
   try {
     const r = await fetch(SAMPLE_URL);
     if (!r.ok) throw new Error("HTTP " + r.status);
-    if (!(await setSource(await r.blob(), "sample-icon.png"))) throw new Error("decode failed");
-    renderNow();
-    b.disabled = false;
+    if ((await setSource(await r.blob(), "sample-icon.png")) === false) throw new Error("decode failed");
   } catch (e) { $("sampleNote").textContent = "サンプルを読み込めませんでした(" + e.message + ")"; }
+  finally { if (location.protocol !== "file:") b.disabled = false; }
 });
 
 buildPresetList();
