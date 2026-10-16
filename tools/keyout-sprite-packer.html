@@ -194,6 +194,12 @@ h1{text-wrap:balance}
           <span class="hint">Aseprite互換は aseprite-sheet-converter と同じ構造です。duration はFPSから算出します。</span>
         </div>
       </section>
+
+      <section class="flex flex-col gap-2">
+        <h2 class="sec-title">設定</h2>
+        <div><button class="btn" type="button" id="btnResetPrefs">設定をリセット</button></div>
+        <p class="hint">キーカラー・透過モード・シート配置・JSON形式・FPS・背景などの設定はこのブラウザに保存され、次回開いたときに復元されます。出力ファイル名と分割数は画像ごとに決まるため保存しません。</p>
+      </section>
     </aside>
 
     <!-- プレビュー -->
@@ -532,6 +538,51 @@ const drop=$('drop');
 ['dragenter','dragover'].forEach(t=>document.addEventListener(t,e=>{e.preventDefault();drop.classList.add('over');}));
 ['dragleave','drop'].forEach(t=>document.addEventListener(t,e=>{e.preventDefault();if(t==='drop'||!e.relatedTarget)drop.classList.remove('over');}));
 document.addEventListener('drop',e=>{if(e.dataTransfer?.files?.length)readFiles(e.dataTransfer.files);});
+
+// ---- 設定の記憶 ----
+// localStorage の imagetools:keyout-sprite-packer:settings に JSON で保存する。読み書きに失敗しても通常どおり動く
+const PREFS_KEY='imagetools:keyout-sprite-packer:settings';
+const PREF_IDS=['keyColor','tol','soft','unblend','blackPt','whitePt','lumColor','cols','pad','mult4','pot','jsonFormat','fps','showGrid'];
+const PREF_SEGS={mode:'[aria-label="透過モード"]',bg:'#bgSeg',blend:'#blendSeg'};
+const prefStore={
+  get(){try{const v=JSON.parse(localStorage.getItem(PREFS_KEY));return v&&typeof v==='object'?v:null;}catch(e){return null;}},
+  set(v){try{localStorage.setItem(PREFS_KEY,JSON.stringify(v));}catch(e){}},
+  remove(){try{localStorage.removeItem(PREFS_KEY);}catch(e){}},
+};
+function readPrefs(){
+  const o={};
+  PREF_IDS.forEach(id=>{const el=$(id);o[id]=el.type==='checkbox'?el.checked:el.value;});
+  for(const k in PREF_SEGS) o[k]=S[k];
+  return o;
+}
+const PREF_DEFAULTS=readPrefs();
+let restoringPrefs=false;
+function savePrefs(){ if(!restoringPrefs) prefStore.set(readPrefs()); }
+function applyPrefs(p){
+  restoringPrefs=true;
+  try{
+    PREF_IDS.forEach(id=>{
+      const el=$(id), v=p[id];
+      if(el.type==='checkbox'){ if(typeof v==='boolean') el.checked=v; return; }
+      if(typeof v!=='string') return;
+      if(el.tagName==='SELECT'){ if([...el.options].some(o=>o.value===v)) el.value=v; return; }
+      if(el.type==='color'){ if(/^#[0-9a-f]{6}$/i.test(v)) el.value=v.toLowerCase(); return; }
+      // 数値は min〜max の範囲内だけ受け付ける（列数の 0 = 自動のように初期値が min 未満のものは初期値も許可）
+      const n=Number(v), lo=Math.min(+el.min,+PREF_DEFAULTS[id]);
+      if(v.trim()!==''&&Number.isFinite(n)&&n>=lo&&n<=+el.max) el.value=String(n);
+    });
+    for(const k in PREF_SEGS){
+      const b=typeof p[k]==='string'&&[...document.querySelectorAll(PREF_SEGS[k]+' button')].find(x=>x.dataset[k]===p[k]);
+      if(b) b.click();
+    }
+  }finally{ restoringPrefs=false; }
+  schedule();
+}
+PREF_IDS.forEach(id=>['input','change'].forEach(t=>$(id).addEventListener(t,savePrefs)));
+Object.values(PREF_SEGS).forEach(sel=>document.querySelectorAll(sel+' button').forEach(b=>b.addEventListener('click',savePrefs)));
+$('btnPick').addEventListener('click',savePrefs);
+$('btnResetPrefs').onclick=()=>{ applyPrefs(PREF_DEFAULTS); prefStore.remove(); toast('設定を初期値に戻しました'); };
+{ const saved=prefStore.get(); if(saved) applyPrefs(saved); }
 
 // 起動
 if(window.claude&&typeof window.claude.use==='function'){ downloadsP=window.claude.use('downloads').catch(()=>null); }
