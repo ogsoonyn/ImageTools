@@ -13,6 +13,7 @@
 | Aseprite シート変換 | Aseprite のファイルをスプライトシートに書き出す。レイヤーの表示切替、キャンバスのセル分割、余白の切り詰め、並べ方(横一列・縦一列・グリッド・セルごとに行)を指定できる | `.ase` / `.aseprite` | スプライトシート PNG + Aseprite 互換 JSON | [`tools/aseprite-sheet-converter.html`](tools/aseprite-sheet-converter.html) |
 | Keyout Sprite Packer | キーカラー(マゼンタなど)を透過に変換し、連番画像を1枚のスプライトシートにまとめる。輝度をアルファに変える透過モードや、加算合成素材向けの色の扱いも選べる。1枚のシートを渡せば透過処理だけを行う | 連番 PNG / BMP、または既存のシート画像 | 透過済みスプライトシート PNG + JSON(独自形式、または Aseprite 互換の Hash / Array) | [`tools/keyout-sprite-packer.html`](tools/keyout-sprite-packer.html) |
 | アイコン一括生成 | 1枚の元画像から favicon 一式(favicon.ico・apple-touch-icon・Android Chrome 用・maskable)、iOS(AppIcon 1024px)、Android(mipmap 各密度・Play ストア用)、Windows(.ico)、任意サイズのアイコンをまとめて作る。余白・角丸・背景色・縮小方式(なめらか / ドット絵向けニアレスト)を指定できる | PNG / JPG / WebP / SVG | ZIP(PNG・ICO・site.webmanifest・HTML スニペット・Contents.json)、または 1 枚ずつ PNG | [`tools/icon-generator.html`](tools/icon-generator.html) |
+| 揺れものアニメーター | 1枚絵に楕円の揺れ領域を置き、体の動き(弾む・上下・左右・着地)に遅れて揺れるバネの動きと、膨張・縮小・膨張縮小の変形を付けたループアニメーションを作る。ドット絵モードでは揺れ幅を整数ピクセルに丸めて最近傍で取るので新しい色が増えない。再生速度や枚数を変えても動きの中身は変わらない | PNG / JPG / WebP など(1枚) | スプライトシート PNG + Aseprite 互換 JSON(Array) | [`tools/jiggle-animator.html`](tools/jiggle-animator.html) |
 
 ### Aseprite シート変換
 
@@ -25,6 +26,10 @@
 ### アイコン一括生成
 
 ![アイコン一括生成の画面](docs/images/icon-generator.png)
+
+### 揺れものアニメーター
+
+![揺れものアニメーターの画面](docs/images/jiggle-animator.png)
 
 ## 使い方
 
