@@ -2,7 +2,7 @@
 
 ゲーム素材づくりなどで使う、画像処理系の小さなツール集です。
 各ツールは **1つのHTMLファイルで完結** しており、インストールやビルドは要りません。
-画像の読み込みから書き出しまで、処理はすべてブラウザの中で行われ、ファイルがどこかへ送信されることはありません。
+画像の読み込みから書き出しまで、処理はすべてブラウザの中で行われます。フォントなどの読み込みで外部へアクセスすることはありますが、画像ファイルを送信することはありません。
 
 - 公開ページ: https://ogsoonyn.github.io/ImageTools/ (GitHub Pages)
 
@@ -10,8 +10,8 @@
 
 | ツール | 用途 | 入力 | 出力 | ファイル |
 | --- | --- | --- | --- | --- |
-| Aseprite シート変換 | Aseprite のファイルをスプライトシートに書き出す。レイヤーの表示切替、キャンバスのセル分割、余白の切り詰め、並べ方(横一列・縦一列・グリッド)を指定できる | `.ase` / `.aseprite` | スプライトシート PNG + Aseprite 互換 JSON | [`tools/aseprite-sheet-converter.html`](tools/aseprite-sheet-converter.html) |
-| Keyout Sprite Packer | キーカラー(マゼンタなど)を透過に変換し、連番画像を1枚のスプライトシートにまとめる。1枚のシートを渡せば透過処理だけを行う | 連番 PNG / BMP、または既存のシート画像 | 透過済みスプライトシート PNG + JSON | [`tools/keyout-sprite-packer.html`](tools/keyout-sprite-packer.html) |
+| Aseprite シート変換 | Aseprite のファイルをスプライトシートに書き出す。レイヤーの表示切替、キャンバスのセル分割、余白の切り詰め、並べ方(横一列・縦一列・グリッド・セルごとに行)を指定できる | `.ase` / `.aseprite` | スプライトシート PNG + Aseprite 互換 JSON | [`tools/aseprite-sheet-converter.html`](tools/aseprite-sheet-converter.html) |
+| Keyout Sprite Packer | キーカラー(マゼンタなど)を透過に変換し、連番画像を1枚のスプライトシートにまとめる。輝度をアルファに変える透過モードや、加算合成素材向けの色の扱いも選べる。1枚のシートを渡せば透過処理だけを行う | 連番 PNG / BMP、または既存のシート画像 | 透過済みスプライトシート PNG + JSON | [`tools/keyout-sprite-packer.html`](tools/keyout-sprite-packer.html) |
 
 ### Aseprite シート変換
 
@@ -32,7 +32,7 @@
 設定を調整してプレビューを確認し、「PNGを保存」「JSONを保存」で書き出します。
 
 > [!NOTE]
-> ローカルの HTML を `file://` で開いた場合、ブラウザの制限で同梱サンプルの読み込みなど一部の機能が使えないことがあります。ツール本体の処理は通常どおり使えます。
+> ローカルの HTML を `file://` で開いた場合、ブラウザの制限で、外部ファイルを読み込む機能(サンプル素材の読み込みなど)が使えないことがあります。ツール本体の処理は通常どおり使えます。
 
 ## ディレクトリ構成
 
