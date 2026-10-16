@@ -1,0 +1,882 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>アイコン一括生成</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<!-- common:begin theme-init -->
+<script>
+  // 描画前に保存済みテーマを反映してちらつきを防ぐ（localStorage が使えなくても動く）
+  (() => {
+    try {
+      const t = localStorage.getItem("imagetools:theme");
+      if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
+    } catch (e) { /* 保存領域が使えない環境では OS 設定に従う */ }
+  })();
+</script>
+<!-- common:end theme-init -->
+<style>
+/* common:begin theme-vars */
+/* テーマ変数。既存ツールの変数名（--bg/--panel/--line/--fg/--muted/--accent/--accent-fg/--warn/--chk-*）を踏襲し、
+   Aseprite 側の名前（--surface/--surface-2/--accent-soft/--danger/--checker-*）も別名として用意する */
+:root{
+  --bg:#eef1f3; --panel:#ffffff; --surface-2:#e4e8ec; --line:#d6dce1; --fg:#1b2329; --muted:#5d6b75;
+  --accent:#0d7f86; --accent-fg:#ffffff; --accent-soft:#d4eef0; --warn:#a1560b; --danger:#b42318;
+  --chk-a:#ffffff; --chk-b:#d9dde1;
+  --surface:var(--panel); --checker-a:var(--chk-a); --checker-b:var(--chk-b);
+  --font-body:"Hiragino Sans","Yu Gothic UI","Noto Sans JP",system-ui,sans-serif;
+  --font-mono:ui-monospace,"Cascadia Mono",Consolas,"JetBrains Mono",monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#12171b; --panel:#1a2126; --surface-2:#232b31; --line:#2c363d; --fg:#e3e9ed; --muted:#93a2ad;
+  --accent:#3cc3c6; --accent-fg:#0b1417; --accent-soft:#163a3d; --warn:#e7a35a; --danger:#ff8a7a;
+  --chk-a:#2a3238; --chk-b:#20272c; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#12171b; --panel:#1a2126; --surface-2:#232b31; --line:#2c363d; --fg:#e3e9ed; --muted:#93a2ad;
+  --accent:#3cc3c6; --accent-fg:#0b1417; --accent-soft:#163a3d; --warn:#e7a35a; --danger:#ff8a7a;
+  --chk-a:#2a3238; --chk-b:#20272c; color-scheme:dark}
+/* common:end theme-vars */
+
+/* common:begin base */
+*,*::before,*::after{box-sizing:border-box}
+h1,h2,h3,p,dl,dd{margin:0}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;margin:0}
+html,body{background:var(--bg);color:var(--fg)}
+body{margin:0;font-family:var(--font-body);font-size:14px;line-height:1.6}
+.wrap{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:16px 40px;max-width:1280px;margin:0 auto}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+h1{text-wrap:balance}
+[hidden]{display:none!important}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+@media (prefers-reduced-motion: reduce){*{transition:none!important}}
+/* common:end base */
+
+/* common:begin utilities */
+/* Tailwind 互換の最小ユーティリティ（CDN 不使用。使うクラスだけ書き足す） */
+.flex{display:flex}.grid{display:grid}.flex-col{flex-direction:column}.flex-wrap{flex-wrap:wrap}
+.items-center{align-items:center}.items-end{align-items:flex-end}.justify-between{justify-content:space-between}.justify-center{justify-content:center}
+.gap-1{gap:4px}.gap-2{gap:8px}.gap-3{gap:12px}.gap-4{gap:16px}.gap-5{gap:20px}
+.mb-2{margin-bottom:8px}.mb-4{margin-bottom:16px}.mt-2{margin-top:8px}.p-3{padding:12px}.p-4{padding:16px}
+.min-w-0{min-width:0}.w-full{width:100%}
+.grid-cols-2{grid-template-columns:repeat(2,minmax(0,1fr))}
+@media (min-width:640px){.sm\:grid-cols-4{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.text-xs{font-size:12px}.text-sm{font-size:13px}.text-xl{font-size:20px;line-height:1.4}.font-bold{font-weight:700}
+.text-muted{color:var(--muted)}
+.mono,.num{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+/* common:end utilities */
+
+/* common:begin components */
+/* daisyUI 風コンポーネント（必要分のみ） */
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px}
+.sec-title{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:700}
+.hint{font-size:12px;color:var(--muted)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--line);background:var(--panel);color:var(--fg);border-radius:7px;padding:6px 12px;font-size:13px;font-weight:500;line-height:1.4;cursor:pointer;white-space:nowrap;text-decoration:none;transition:background .15s,border-color .15s}
+.btn:hover{border-color:var(--accent)}
+.btn-primary{background:var(--accent);color:var(--accent-fg);border-color:var(--accent);font-weight:700}
+.btn-primary:hover{filter:brightness(1.08)}
+.btn-ghost{border-color:transparent;background:transparent}
+.btn-ghost:hover{background:var(--surface-2);border-color:transparent}
+.btn-sm{padding:3px 8px;font-size:12px}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.is-active,.btn[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--accent)}
+.join{display:inline-flex;flex-wrap:wrap}
+.join>.btn{border-radius:0;margin-left:-1px}
+.join>.btn:first-child{border-radius:7px 0 0 7px;margin-left:0}
+.join>.btn:last-child{border-radius:0 7px 7px 0}
+.select,.input{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:4px 8px;color:var(--fg);font-family:var(--font-mono);font-size:13px;min-width:0}
+.range{width:100%;accent-color:var(--accent)}
+.checkbox{accent-color:var(--accent);margin:0}
+.badge{display:inline-block;font-size:11px;font-weight:700;padding:1px 8px;border-radius:999px;background:var(--accent);color:var(--accent-fg)}
+.warn{color:var(--warn)}.danger{color:var(--danger)}
+.drop{display:block;border:1.5px dashed var(--line);border-radius:8px;padding:14px;text-align:center;cursor:pointer;transition:border-color .15s,background .15s}
+.drop.over,.drop:hover,.drop:has(+ .sr-only:focus){border-color:var(--accent);background:var(--accent-soft)}
+.drop:has(+ .sr-only:focus-visible){outline:2px solid var(--accent);outline-offset:2px}
+.bg-checker{background-color:var(--chk-a);background-image:linear-gradient(45deg,var(--chk-b) 25%,transparent 25%,transparent 75%,var(--chk-b) 75%),linear-gradient(45deg,var(--chk-b) 25%,transparent 25%,transparent 75%,var(--chk-b) 75%);background-size:16px 16px;background-position:0 0,8px 8px}
+.stage{border-radius:8px;border:1px solid var(--line);overflow:auto;max-height:70vh;display:flex;align-items:flex-start;justify-content:center;padding:12px}
+.stage canvas{max-width:100%;height:auto}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));background:var(--fg);color:var(--bg);padding:8px 14px;border-radius:8px;font-size:13px;opacity:0;pointer-events:none;transition:opacity .2s;z-index:100;max-width:calc(100vw - 32px)}
+.toast.show{opacity:1}
+/* common:end components */
+
+/* common:begin header-style */
+.app-header{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 12px;margin-bottom:16px}
+.app-header .back{display:inline-block;padding:4px 0;font-size:12px;color:var(--muted);text-decoration:none}
+.app-header .back:hover{color:var(--accent)}
+.app-header .actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+/* common:end header-style */
+
+/* ---- ここから下はツール固有のスタイル ---- */
+/* Layout: 左 = 設定パネル（固定幅）, 右 = プレビュー。狭幅では縦積み */
+.grid-main{display:grid;grid-template-columns:320px minmax(0,1fr);gap:16px;align-items:start}
+@media (max-width:860px){.grid-main{grid-template-columns:minmax(0,1fr)}}
+.field{display:flex;flex-direction:column;gap:4px}
+.field-row{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.check{display:flex;align-items:flex-start;gap:8px;cursor:pointer}
+.check .checkbox{margin-top:4px}
+.color{width:36px;height:28px;padding:0;border:1px solid var(--line);border-radius:6px;background:none;cursor:pointer}
+.src-thumb{width:96px;height:96px;object-fit:contain;border-radius:6px;border:1px solid var(--line)}
+.group+.group{margin-top:20px}
+.group-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;margin-bottom:8px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:8px}
+.tile{display:flex;flex-direction:column;align-items:center;gap:6px;padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--panel);cursor:pointer;min-width:0;text-align:center}
+.tile:hover{border-color:var(--accent)}
+.tile[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft)}
+.tile .box{width:96px;height:96px;display:flex;align-items:center;justify-content:center;border-radius:6px}
+.tile canvas{display:block;max-width:96px;max-height:96px}
+.tile canvas.px{image-rendering:pixelated}
+.tile .name{font-family:var(--font-mono);font-size:11px;line-height:1.4;overflow-wrap:anywhere;color:var(--muted)}
+.tile .size{font-family:var(--font-mono);font-size:12px;font-weight:700}
+.big{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start}
+.big .stage{flex:0 0 auto;max-height:none}
+.big canvas{width:256px;height:256px;max-width:100%}
+.code{font-family:var(--font-mono);font-size:12px;line-height:1.5;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:8px;white-space:pre;overflow:auto;max-height:180px;margin:0}
+textarea.input{width:100%;resize:vertical}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <!-- common:begin header -->
+  <header class="app-header">
+    <div class="min-w-0">
+      <a class="back" href="../index.html">← ツール一覧</a>
+      <h1 class="text-xl font-bold">アイコン一括生成</h1>
+      <p class="hint">1 枚の元画像から favicon・iOS・Android・Windows 用のアイコンをまとめて作り、ZIP で保存します。処理はすべてブラウザ内で完結します。</p>
+    </div>
+    <div class="actions">
+      <button class="btn btn-ghost" type="button" id="themeToggle">テーマ: 自動</button>
+    </div>
+  </header>
+  <!-- common:end header -->
+
+  <!-- ---- ここから下はツール固有の本体 ---- -->
+  <div class="grid-main">
+    <aside class="panel p-4 flex flex-col gap-5">
+      <section class="flex flex-col gap-2">
+        <h2 class="sec-title">入力</h2>
+        <label class="drop" id="drop" for="fileInput">
+          <span class="text-sm">元画像をドロップ、またはクリックして選択</span><br>
+          <span class="hint">PNG / JPG / WebP / SVG。512×512 以上の正方形がおすすめ</span>
+        </label>
+        <input type="file" id="fileInput" class="sr-only" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml,.svg">
+        <div class="flex flex-wrap items-center gap-2"><button class="btn" type="button" id="btnSample">サンプルを読み込む</button><span class="hint" id="sampleNote"></span></div>
+        <p class="hint" id="srcNote">未読み込み</p>
+        <p class="hint warn" id="srcWarn" hidden></p>
+      </section>
+
+      <section class="flex flex-col gap-2">
+        <h2 class="sec-title">出力するアイコン</h2>
+        <div class="flex flex-col gap-2" id="presetList"></div>
+        <div class="field" id="customField">
+          <label class="text-sm" for="customSizes">カスタムサイズ(px、カンマ区切り)</label>
+          <input class="input" id="customSizes" type="text" inputmode="numeric" placeholder="例: 64, 128, 300">
+        </div>
+      </section>
+
+      <section class="flex flex-col gap-3">
+        <h2 class="sec-title">調整</h2>
+        <div class="field">
+          <div class="field-row"><label class="text-sm" for="pad">余白</label><span class="num text-sm" id="padVal">0%</span></div>
+          <input class="range" type="range" id="pad" min="0" max="30" step="1" value="0">
+        </div>
+        <div class="field">
+          <div class="field-row"><label class="text-sm" for="radius">角丸</label><span class="num text-sm" id="radiusVal">0%</span></div>
+          <input class="range" type="range" id="radius" min="0" max="50" step="1" value="0">
+          <span class="hint">50% で円になります。iOS / apple-touch-icon / maskable には角丸を付けません(OS 側で丸めるため)</span>
+        </div>
+        <div class="field">
+          <span class="text-sm">背景</span>
+          <div class="flex items-center gap-2 flex-wrap">
+            <div class="join" role="group" aria-label="背景">
+              <button class="btn btn-sm" type="button" data-bg="transparent" aria-pressed="true">透過</button>
+              <button class="btn btn-sm" type="button" data-bg="color" aria-pressed="false">単色</button>
+            </div>
+            <input class="color" type="color" id="bgColor" value="#ffffff" aria-label="背景色">
+          </div>
+          <span class="hint">透過のままでも、透過できない出力(iOS など)はこの色で塗ります</span>
+        </div>
+        <div class="field">
+          <span class="text-sm">縮小方式</span>
+          <div class="join" role="group" aria-label="縮小方式">
+            <button class="btn btn-sm" type="button" data-scale="smooth" aria-pressed="true">なめらか</button>
+            <button class="btn btn-sm" type="button" data-scale="nearest" aria-pressed="false">ドット絵(ニアレスト)</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="flex flex-col gap-2" id="manifestSec">
+        <h2 class="sec-title">Web マニフェスト</h2>
+        <div class="field"><label class="text-sm" for="appName">アプリ名</label><input class="input" id="appName" type="text" value="My App"></div>
+        <div class="field"><label class="text-sm" for="shortName">短い名前</label><input class="input" id="shortName" type="text" value="App"></div>
+        <div class="field">
+          <label class="text-sm" for="themeColor">テーマカラー</label>
+          <input class="color" type="color" id="themeColor" value="#0d7f86">
+        </div>
+      </section>
+
+      <section class="flex flex-col gap-2">
+        <h2 class="sec-title">出力</h2>
+        <div class="flex gap-2 flex-wrap">
+          <button class="btn btn-primary" type="button" id="btnZip" disabled>ZIPで一括保存</button>
+          <button class="btn" type="button" id="btnPng" disabled>PNGを保存</button>
+        </div>
+        <p class="hint" id="outNote">プレビューのアイコンをクリックすると、その1枚を「PNGを保存」で保存できます</p>
+      </section>
+    </aside>
+
+    <main class="panel p-4 min-w-0 flex flex-col gap-4">
+      <section>
+        <h2 class="sec-title mb-2">プレビュー</h2>
+        <div class="big">
+          <div class="stage bg-checker"><canvas id="bigPreview" width="256" height="256" aria-label="選択中のアイコンの拡大プレビュー"></canvas></div>
+          <div class="min-w-0 flex flex-col gap-1">
+            <p class="font-bold mono" id="selName">—</p>
+            <p class="hint" id="selInfo">元画像を読み込むと、各サイズのアイコンがここに並びます</p>
+          </div>
+        </div>
+      </section>
+      <section id="tilesWrap"></section>
+      <section id="snippetSec" hidden>
+        <div class="group-head"><h2 class="sec-title">HTML スニペット</h2><button class="btn btn-sm" type="button" id="btnCopy">コピー</button></div>
+        <pre class="code" id="snippet"></pre>
+        <p class="hint mt-2">ZIP の web/ フォルダの中身をサイトのルートに置き、この内容を &lt;head&gt; に貼り付けます</p>
+      </section>
+    </main>
+  </div>
+</div>
+
+<!-- common:begin toast -->
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<!-- common:end toast -->
+
+<!-- common:begin common-js -->
+<script>
+/* 共通 JS。各ツールはこのブロックをそのままコピーし、下の「ツール固有」スクリプトから IT.* を使う */
+const IT = (() => {
+  const PREFIX = "imagetools:";
+
+  // ---- localStorage の安全な読み書き（プライベートモード等で例外になっても落ちない） ----
+  const store = {
+    get(key, fallback = null) {
+      try { const v = localStorage.getItem(PREFIX + key); return v === null ? fallback : JSON.parse(v); }
+      catch (e) { return fallback; }
+    },
+    set(key, value) {
+      try { localStorage.setItem(PREFIX + key, JSON.stringify(value)); return true; }
+      catch (e) { return false; }
+    },
+    remove(key) {
+      try { localStorage.removeItem(PREFIX + key); } catch (e) { /* 無視 */ }
+    },
+  };
+
+  // ---- トースト ----
+  let toastTimer = 0;
+  function toast(msg, ms = 2400) {
+    const t = document.getElementById("toast");
+    if (!t) return;
+    t.textContent = msg;
+    t.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.remove("show"), ms);
+  }
+
+  // ---- テーマ切替（自動 → ライト → ダーク の順に循環） ----
+  // theme-init は生の文字列で読むため、ここも JSON を介さず同じキーに文字列で保存する
+  const THEME_KEY = PREFIX + "theme";
+  const THEME_LABEL = { auto: "テーマ: 自動", light: "テーマ: ライト", dark: "テーマ: ダーク" };
+  function getTheme() {
+    const t = document.documentElement.dataset.theme;
+    return t === "light" || t === "dark" ? t : "auto";
+  }
+  function applyTheme(theme) {
+    const root = document.documentElement;
+    if (theme === "light" || theme === "dark") root.dataset.theme = theme;
+    else delete root.dataset.theme;
+    try {
+      if (theme === "auto") localStorage.removeItem(THEME_KEY);
+      else localStorage.setItem(THEME_KEY, theme);
+    } catch (e) { /* 保存できなくても切替自体は有効 */ }
+    const btn = document.getElementById("themeToggle");
+    if (btn) btn.textContent = THEME_LABEL[getTheme()];
+  }
+  function initThemeToggle() {
+    const btn = document.getElementById("themeToggle");
+    if (!btn) return;
+    btn.textContent = THEME_LABEL[getTheme()];
+    btn.addEventListener("click", () => {
+      const next = { auto: "light", light: "dark", dark: "auto" }[getTheme()];
+      applyTheme(next);
+      toast(THEME_LABEL[next]);
+    });
+  }
+
+  // ---- ファイル保存（Claude アーティファクトでは downloads、通常ブラウザでは <a download>） ----
+  // "anchor" = 通常ブラウザ / null = アーティファクト内だが downloads が使えない / それ以外 = downloads ハンドル
+  let downloadsP = null;
+  function getDownloads() {
+    if (!downloadsP) {
+      downloadsP = (window.claude && typeof window.claude.use === "function")
+        ? Promise.resolve().then(() => window.claude.use("downloads")).then((d) => d || null, () => null)
+        : Promise.resolve("anchor");
+    }
+    return downloadsP;
+  }
+  getDownloads();
+  const SAVE_ERRORS = { declined: "保存をキャンセルしました", rate_limited: "保存が続いたため一時的に制限されています。少し待ってからお試しください" };
+  async function saveFile(filename, data) {
+    const dl = await getDownloads();
+    if (dl === "anchor") {
+      const blob = data instanceof Blob ? data : new Blob([data]);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = filename;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 4000);
+      toast(filename + " を保存しました");
+      return true;
+    }
+    if (!dl) { toast("この表示ではファイルを保存できません"); return false; }
+    try {
+      const res = await dl.save({ filename, data });
+      const ok = !res || res.status === undefined || res.status === "saved";
+      if (ok) toast(filename + " を保存しました");
+      return ok;
+    } catch (e) {
+      const code = (e && e.code) || "error";
+      toast(SAVE_ERRORS[code] || "保存できませんでした（" + code + "）");
+      return false;
+    }
+  }
+  function canvasToBlob(canvas, type = "image/png") {
+    return new Promise((res, rej) => canvas.toBlob((b) => (b ? res(b) : rej(new Error("toBlob failed"))), type));
+  }
+
+  // ---- ドラッグ&ドロップ受付（ページ全体で受け、zone に .over を付ける） ----
+  // accept: ファイルを絞る関数（省略時はすべて）。onFiles には絞り込み後の File[] を渡す
+  function initDrop({ zone, input, accept = () => true, onFiles, emptyMessage = "対応するファイルが見つかりませんでした" }) {
+    const zoneEl = typeof zone === "string" ? document.getElementById(zone) : zone;
+    const inputEl = typeof input === "string" ? document.getElementById(input) : input;
+    const handle = (list) => {
+      const files = [...(list || [])].filter(accept);
+      if (!files.length) { toast(emptyMessage); return; }
+      onFiles(files);
+    };
+    let depth = 0;
+    const hasFiles = (e) => !!e.dataTransfer && [...e.dataTransfer.types].includes("Files");
+    document.addEventListener("dragenter", (e) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault(); depth++; zoneEl && zoneEl.classList.add("over");
+    });
+    document.addEventListener("dragover", (e) => { if (hasFiles(e)) e.preventDefault(); });
+    document.addEventListener("dragleave", (e) => {
+      if (!hasFiles(e)) return;
+      depth = Math.max(0, depth - 1);
+      if (!depth && zoneEl) zoneEl.classList.remove("over");
+    });
+    document.addEventListener("drop", (e) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault(); depth = 0; zoneEl && zoneEl.classList.remove("over");
+      handle(e.dataTransfer.files);
+    });
+    if (inputEl) inputEl.addEventListener("change", (e) => { handle(e.target.files); e.target.value = ""; });
+  }
+
+  initThemeToggle();
+  // 別タブでテーマを変えたら追従する（保存はし直さない）
+  window.addEventListener("storage", (e) => {
+    if (e.key !== THEME_KEY) return;
+    const t = e.newValue === "light" || e.newValue === "dark" ? e.newValue : null;
+    if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme;
+    const btn = document.getElementById("themeToggle");
+    if (btn) btn.textContent = THEME_LABEL[getTheme()];
+  });
+  return { store, toast, saveFile, canvasToBlob, initDrop, applyTheme, getTheme };
+})();
+</script>
+<!-- common:end common-js -->
+
+<script>
+/* ---- ここから下はツール固有のスクリプト ---- */
+const $ = (id) => document.getElementById(id);
+const SAMPLE_URL = "../samples/icon/sample-icon.png";
+const SETTINGS_KEY = "icon-generator:settings";
+const SVG_RASTER = 1024; // SVG はこの大きさ(長辺)でラスタライズしてから縮小する
+
+// 出力プリセット。path は ZIP 内のパス。ico は 1 ファイルに入れるサイズの一覧
+// opaque: 透過できない出力(背景色で塗る) / noRadius: OS 側で角を丸めるので角丸を付けない / maskable: セーフゾーン(中央 80%)に収める
+const PRESETS = [
+  { id: "web", label: "Web(favicon 一式)", desc: "favicon.ico、apple-touch-icon、Android Chrome 用 192/512、maskable、site.webmanifest、HTML スニペット", items: [
+    { path: "web/favicon.ico", ico: [16, 32, 48] },
+    { path: "web/favicon-16x16.png", size: 16 },
+    { path: "web/favicon-32x32.png", size: 32 },
+    { path: "web/apple-touch-icon.png", size: 180, opaque: true, noRadius: true },
+    { path: "web/android-chrome-192x192.png", size: 192 },
+    { path: "web/android-chrome-512x512.png", size: 512 },
+    { path: "web/maskable-icon-512x512.png", size: 512, opaque: true, noRadius: true, maskable: true },
+  ] },
+  { id: "ios", label: "iOS アプリ", desc: "Xcode 用 AppIcon.appiconset(1024px 1 枚 + Contents.json)", items: [
+    { path: "ios/AppIcon.appiconset/AppIcon-1024.png", size: 1024, opaque: true, noRadius: true },
+  ] },
+  { id: "android", label: "Android アプリ", desc: "mipmap 各密度の ic_launcher.png と Play ストア用 512px", items: [
+    { path: "android/res/mipmap-mdpi/ic_launcher.png", size: 48 },
+    { path: "android/res/mipmap-hdpi/ic_launcher.png", size: 72 },
+    { path: "android/res/mipmap-xhdpi/ic_launcher.png", size: 96 },
+    { path: "android/res/mipmap-xxhdpi/ic_launcher.png", size: 144 },
+    { path: "android/res/mipmap-xxxhdpi/ic_launcher.png", size: 192 },
+    { path: "android/play-store-512.png", size: 512 },
+  ] },
+  { id: "windows", label: "Windows(.ico)", desc: "16〜256px を 1 つにまとめた app.ico", items: [
+    { path: "windows/app.ico", ico: [16, 24, 32, 48, 64, 128, 256] },
+  ] },
+];
+
+const DEFAULTS = {
+  presets: { web: true, ios: true, android: true, windows: true },
+  custom: "", pad: 0, radius: 0, bg: "transparent", bgColor: "#ffffff", scale: "smooth",
+  appName: "My App", shortName: "App", themeColor: "#0d7f86",
+};
+const S = loadSettings();
+let src = null;      // { name, w, h, levels: canvas[] }(levels[0] が原寸、以降は半分ずつ縮小したもの)
+let tiles = [];      // { key, item, size, canvas }
+let selectedKey = null;
+
+function loadSettings() {
+  const saved = IT.store.get(SETTINGS_KEY, {}) || {};
+  const s = structuredClone(DEFAULTS);
+  const hex = (v) => typeof v === "string" && /^#[0-9a-f]{6}$/i.test(v);
+  if (saved.presets && typeof saved.presets === "object") for (const p of PRESETS) if (typeof saved.presets[p.id] === "boolean") s.presets[p.id] = saved.presets[p.id];
+  if (typeof saved.custom === "string") s.custom = saved.custom.slice(0, 200);
+  if (Number.isFinite(saved.pad)) s.pad = Math.min(30, Math.max(0, saved.pad));
+  if (Number.isFinite(saved.radius)) s.radius = Math.min(50, Math.max(0, saved.radius));
+  if (saved.bg === "transparent" || saved.bg === "color") s.bg = saved.bg;
+  if (saved.scale === "smooth" || saved.scale === "nearest") s.scale = saved.scale;
+  for (const k of ["bgColor", "themeColor"]) if (hex(saved[k])) s[k] = saved[k];
+  for (const k of ["appName", "shortName"]) if (typeof saved[k] === "string") s[k] = saved[k].slice(0, 100);
+  return s;
+}
+function saveSettings() { IT.store.set(SETTINGS_KEY, S); }
+
+// ---- 入力 ----
+function parseCustom(text) {
+  const out = [];
+  for (const t of String(text).split(/[\s,、]+/)) {
+    if (!t) continue;
+    const n = Number(t);
+    if (Number.isInteger(n) && n >= 1 && n <= 4096 && !out.includes(n)) out.push(n);
+  }
+  return out;
+}
+
+function loadImageElement(blob) {
+  return new Promise((res, rej) => {
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    img.onload = () => { URL.revokeObjectURL(url); res(img); };
+    img.onerror = () => { URL.revokeObjectURL(url); rej(new Error("decode failed")); };
+    img.src = url;
+  });
+}
+
+async function toCanvas(blob, name) {
+  const isSvg = blob.type === "image/svg+xml" || /\.svg$/i.test(name);
+  let w, h, source;
+  if (isSvg) {
+    source = await loadImageElement(blob);
+    w = source.naturalWidth || SVG_RASTER; h = source.naturalHeight || SVG_RASTER;
+    const k = SVG_RASTER / Math.max(w, h);
+    w = Math.max(1, Math.round(w * k)); h = Math.max(1, Math.round(h * k));
+  } else {
+    source = await createImageBitmap(blob);
+    w = source.width; h = source.height;
+  }
+  const c = document.createElement("canvas");
+  c.width = w; c.height = h;
+  c.getContext("2d").drawImage(source, 0, 0, w, h);
+  if (source.close) source.close();
+  return c;
+}
+
+// なめらか縮小用に、半分ずつ縮小した画像を用意しておく(一度に大きく縮小するとギザギザになるため)
+function buildLevels(base) {
+  const levels = [base];
+  let cur = base;
+  while (cur.width > 2 && cur.height > 2 && Math.max(cur.width, cur.height) > 32) {
+    const c = document.createElement("canvas");
+    c.width = Math.max(1, Math.round(cur.width / 2)); c.height = Math.max(1, Math.round(cur.height / 2));
+    const g = c.getContext("2d");
+    g.imageSmoothingEnabled = true; g.imageSmoothingQuality = "high";
+    g.drawImage(cur, 0, 0, c.width, c.height);
+    levels.push(c); cur = c;
+  }
+  return levels;
+}
+
+async function setSource(blob, name) {
+  let c;
+  try { c = await toCanvas(blob, name); }
+  catch (e) { IT.toast(name + " を読み込めませんでした"); return false; }
+  src = { name, w: c.width, h: c.height, levels: buildLevels(c) };
+  $("srcNote").textContent = name + "(" + c.width + "×" + c.height + ")";
+  selectedKey = null;
+  render();
+  return true;
+}
+
+// ---- 描画 ----
+function renderIcon(size, item) {
+  const c = document.createElement("canvas");
+  c.width = c.height = size;
+  const g = c.getContext("2d");
+  const radius = item.noRadius ? 0 : (S.radius / 100) * size;
+  if (radius > 0) { g.save(); g.beginPath(); g.roundRect(0, 0, size, size, radius); g.clip(); }
+  if (item.opaque || S.bg === "color") { g.fillStyle = S.bgColor; g.fillRect(0, 0, size, size); }
+  let area = size * (1 - 2 * S.pad / 100);
+  if (item.maskable) area *= 0.8;
+  const k = Math.min(area / src.w, area / src.h);
+  const dw = Math.max(1, Math.round(src.w * k)), dh = Math.max(1, Math.round(src.h * k));
+  const dx = Math.round((size - dw) / 2), dy = Math.round((size - dh) / 2);
+  let img = src.levels[0];
+  if (S.scale === "nearest") {
+    g.imageSmoothingEnabled = false;
+  } else {
+    g.imageSmoothingEnabled = true; g.imageSmoothingQuality = "high";
+    for (const lv of src.levels) { if (lv.width >= dw && lv.height >= dh) img = lv; else break; }
+  }
+  g.drawImage(img, dx, dy, dw, dh);
+  if (radius > 0) g.restore();
+  return c;
+}
+
+function activeItems() {
+  const list = [];
+  for (const p of PRESETS) if (S.presets[p.id]) for (const item of p.items) list.push({ group: p, item });
+  const custom = parseCustom(S.custom);
+  if (custom.length) {
+    const group = { id: "custom", label: "カスタム" };
+    for (const s of custom) list.push({ group, item: { path: "custom/icon-" + s + "x" + s + ".png", size: s } });
+  }
+  return list;
+}
+
+let renderQueued = false;
+function render() {
+  if (renderQueued) return;
+  renderQueued = true;
+  requestAnimationFrame(() => { renderQueued = false; renderNow(); });
+}
+
+function renderNow() {
+  syncControls();
+  const wrap = $("tilesWrap");
+  wrap.textContent = "";
+  tiles = [];
+  const list = activeItems();
+  const hasOut = !!src && list.length > 0;
+  $("btnZip").disabled = !hasOut;
+  $("snippetSec").hidden = !src || !S.presets.web;
+  updateWarn(list);
+  if (!src) { drawBig(null); return; }
+  if (!list.length) { drawBig(null); $("selInfo").textContent = "出力するアイコンを 1 つ以上選んでください"; $("btnPng").disabled = true; return; }
+
+  let currentGroup = null, grid = null;
+  for (const { group, item } of list) {
+    if (group !== currentGroup) {
+      currentGroup = group;
+      const sec = document.createElement("div");
+      sec.className = "group";
+      const head = document.createElement("div");
+      head.className = "group-head";
+      const h = document.createElement("h2");
+      h.className = "sec-title"; h.textContent = group.label;
+      head.append(h);
+      grid = document.createElement("div");
+      grid.className = "tiles";
+      sec.append(head, grid);
+      wrap.append(sec);
+    }
+    for (const size of item.ico || [item.size]) {
+      const key = item.path + "|" + size;
+      const canvas = renderIcon(size, item);
+      tiles.push({ key, item, size, canvas });
+      grid.append(makeTile(key, item, size, canvas));
+    }
+  }
+  if (!tiles.some((t) => t.key === selectedKey)) selectedKey = tiles[0].key;
+  selectTile(selectedKey);
+  $("snippet").textContent = headSnippet();
+}
+
+function makeTile(key, item, size, canvas) {
+  const b = document.createElement("button");
+  b.type = "button"; b.className = "tile"; b.dataset.key = key;
+  b.setAttribute("aria-pressed", "false");
+  const box = document.createElement("span");
+  box.className = "box bg-checker";
+  canvas.setAttribute("aria-hidden", "true");
+  box.append(canvas);
+  const sz = document.createElement("span");
+  sz.className = "size"; sz.textContent = size + "px";
+  const nm = document.createElement("span");
+  nm.className = "name"; nm.textContent = baseName(item.path) + (item.ico ? "(" + size + ")" : "");
+  b.append(box, sz, nm);
+  b.setAttribute("aria-label", item.path + " " + size + "×" + size);
+  b.addEventListener("click", () => selectTile(key));
+  return b;
+}
+
+function selectTile(key) {
+  selectedKey = key;
+  for (const el of $("tilesWrap").querySelectorAll(".tile")) el.setAttribute("aria-pressed", String(el.dataset.key === key));
+  const t = tiles.find((x) => x.key === key);
+  drawBig(t);
+  $("btnPng").disabled = !t;
+  if (!t) return;
+  $("selName").textContent = pngName(t);
+  const notes = [t.size + "×" + t.size + " px", "ZIP 内: " + t.item.path];
+  if (t.item.maskable) notes.push("maskable: 中央 80% に収めています");
+  else if (t.item.opaque) notes.push("背景色で塗りつぶしています(透過不可)");
+  $("selInfo").textContent = notes.join(" · ");
+}
+
+function drawBig(t) {
+  const c = $("bigPreview");
+  const g = c.getContext("2d");
+  g.clearRect(0, 0, c.width, c.height);
+  if (!t) { $("selName").textContent = "—"; if (!src) $("selInfo").textContent = "元画像を読み込むと、各サイズのアイコンがここに並びます"; return; }
+  // 小さいアイコンはドットが見えるように拡大し、大きいものはなめらかに縮小して表示する
+  g.imageSmoothingEnabled = t.size > c.width;
+  g.imageSmoothingQuality = "high";
+  g.drawImage(t.canvas, 0, 0, c.width, c.height);
+}
+
+function updateWarn(list) {
+  const msgs = [];
+  if (src) {
+    if (src.w !== src.h) msgs.push("正方形ではないため、中央に配置して余白で正方形にしています。");
+    const max = Math.max(0, ...list.map(({ item }) => Math.max(...(item.ico || [item.size]))));
+    if (max > Math.min(src.w, src.h) && S.scale === "smooth") msgs.push("元画像が " + max + "px より小さいため、大きいサイズは拡大になりぼやけます。ドット絵なら「ドット絵(ニアレスト)」を選んでください。");
+  }
+  $("srcWarn").textContent = msgs.join(" ");
+  $("srcWarn").hidden = !msgs.length;
+}
+
+// ---- 書き出し ----
+const baseName = (p) => p.slice(p.lastIndexOf("/") + 1);
+function pngName(t) {
+  const b = baseName(t.item.path);
+  return t.item.ico ? b.replace(/\.ico$/i, "") + "-ico-" + t.size + "x" + t.size + ".png" : b;
+}
+
+async function blobBytes(blob) { return new Uint8Array(await blob.arrayBuffer()); }
+
+// PNG を格納した ICO(Windows Vista 以降・主要ブラウザが対応)
+function encodeIco(entries) {
+  const n = entries.length;
+  const total = 6 + 16 * n + entries.reduce((s, e) => s + e.png.length, 0);
+  const buf = new Uint8Array(total);
+  const dv = new DataView(buf.buffer);
+  dv.setUint16(0, 0, true); dv.setUint16(2, 1, true); dv.setUint16(4, n, true);
+  let offset = 6 + 16 * n;
+  entries.forEach((e, i) => {
+    const b = 6 + 16 * i;
+    buf[b] = e.size >= 256 ? 0 : e.size;      // 256 は 0 で表す
+    buf[b + 1] = e.size >= 256 ? 0 : e.size;
+    dv.setUint16(b + 4, 1, true);             // カラープレーン
+    dv.setUint16(b + 6, 32, true);            // ビット深度
+    dv.setUint32(b + 8, e.png.length, true);
+    dv.setUint32(b + 12, offset, true);
+    buf.set(e.png, offset);
+    offset += e.png.length;
+  });
+  return buf;
+}
+
+// 無圧縮(STORE)の ZIP。PNG はすでに圧縮済みなので、圧縮しなくてもサイズはほぼ変わらない
+const CRC_TABLE = (() => {
+  const t = new Uint32Array(256);
+  for (let i = 0; i < 256; i++) { let c = i; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; t[i] = c >>> 0; }
+  return t;
+})();
+function crc32(bytes) {
+  let c = 0xffffffff;
+  for (let i = 0; i < bytes.length; i++) c = CRC_TABLE[(c ^ bytes[i]) & 0xff] ^ (c >>> 8);
+  return (c ^ 0xffffffff) >>> 0;
+}
+function encodeZip(files) {
+  const enc = new TextEncoder();
+  const now = new Date();
+  const time = (now.getHours() << 11) | (now.getMinutes() << 5) | (now.getSeconds() >> 1);
+  const date = ((now.getFullYear() - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate();
+  const locals = [], centrals = [];
+  let offset = 0;
+  for (const f of files) {
+    const name = enc.encode(f.path);
+    const crc = crc32(f.data), size = f.data.length;
+    const lh = new Uint8Array(30 + name.length);
+    const l = new DataView(lh.buffer);
+    l.setUint32(0, 0x04034b50, true); l.setUint16(4, 20, true); l.setUint16(6, 0x0800, true); // UTF-8 ファイル名
+    l.setUint16(8, 0, true); l.setUint16(10, time, true); l.setUint16(12, date, true);
+    l.setUint32(14, crc, true); l.setUint32(18, size, true); l.setUint32(22, size, true);
+    l.setUint16(26, name.length, true); l.setUint16(28, 0, true);
+    lh.set(name, 30);
+    const ch = new Uint8Array(46 + name.length);
+    const c = new DataView(ch.buffer);
+    c.setUint32(0, 0x02014b50, true); c.setUint16(4, 20, true); c.setUint16(6, 20, true); c.setUint16(8, 0x0800, true);
+    c.setUint16(10, 0, true); c.setUint16(12, time, true); c.setUint16(14, date, true);
+    c.setUint32(16, crc, true); c.setUint32(20, size, true); c.setUint32(24, size, true);
+    c.setUint16(28, name.length, true); c.setUint32(42, offset, true);
+    ch.set(name, 46);
+    locals.push(lh, f.data); centrals.push(ch);
+    offset += lh.length + size;
+  }
+  const cdSize = centrals.reduce((s, x) => s + x.length, 0);
+  const end = new Uint8Array(22);
+  const e = new DataView(end.buffer);
+  e.setUint32(0, 0x06054b50, true); e.setUint16(8, files.length, true); e.setUint16(10, files.length, true);
+  e.setUint32(12, cdSize, true); e.setUint32(16, offset, true);
+  return new Blob([...locals, ...centrals, end], { type: "application/zip" });
+}
+
+function webManifest() {
+  return JSON.stringify({
+    name: S.appName, short_name: S.shortName,
+    icons: [
+      { src: "/android-chrome-192x192.png", sizes: "192x192", type: "image/png" },
+      { src: "/android-chrome-512x512.png", sizes: "512x512", type: "image/png" },
+      { src: "/maskable-icon-512x512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
+    ],
+    theme_color: S.themeColor, background_color: S.bgColor, display: "standalone",
+  }, null, 2) + "\n";
+}
+function headSnippet() {
+  return [
+    '<link rel="icon" href="/favicon.ico" sizes="48x48">',
+    '<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">',
+    '<link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">',
+    '<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">',
+    '<link rel="manifest" href="/site.webmanifest">',
+    '<meta name="theme-color" content="' + S.themeColor + '">',
+  ].join("\n") + "\n";
+}
+const IOS_CONTENTS = JSON.stringify({
+  images: [{ filename: "AppIcon-1024.png", idiom: "universal", platform: "ios", size: "1024x1024" }],
+  info: { author: "xcode", version: 1 },
+}, null, 2) + "\n";
+
+async function buildZip() {
+  const enc = new TextEncoder();
+  const files = [];
+  const byPath = new Map();
+  for (const t of tiles) {
+    if (!byPath.has(t.item.path)) byPath.set(t.item.path, { item: t.item, frames: [] });
+    byPath.get(t.item.path).frames.push(t);
+  }
+  for (const [path, { item, frames }] of byPath) {
+    const pngs = await Promise.all(frames.map(async (t) => ({ size: t.size, png: await blobBytes(await IT.canvasToBlob(t.canvas)) })));
+    files.push({ path, data: item.ico ? encodeIco(pngs) : pngs[0].png });
+  }
+  if (S.presets.web) {
+    files.push({ path: "web/site.webmanifest", data: enc.encode(webManifest()) });
+    files.push({ path: "web/head-snippet.html", data: enc.encode(headSnippet()) });
+  }
+  if (S.presets.ios) files.push({ path: "ios/AppIcon.appiconset/Contents.json", data: enc.encode(IOS_CONTENTS) });
+  return encodeZip(files);
+}
+
+$("btnZip").addEventListener("click", async () => {
+  const b = $("btnZip");
+  b.disabled = true;
+  try { await IT.saveFile("icons.zip", await buildZip()); }
+  catch (e) { IT.toast("ZIP を作成できませんでした"); }
+  finally { b.disabled = !src || !tiles.length; }
+});
+$("btnPng").addEventListener("click", async () => {
+  const t = tiles.find((x) => x.key === selectedKey);
+  if (!t) return;
+  try { await IT.saveFile(pngName(t), await IT.canvasToBlob(t.canvas)); }
+  catch (e) { IT.toast("PNGを作成できませんでした"); }
+});
+$("btnCopy").addEventListener("click", async () => {
+  try { await navigator.clipboard.writeText(headSnippet()); IT.toast("コピーしました"); }
+  catch (e) { IT.toast("コピーできませんでした。テキストを選択してコピーしてください"); }
+});
+
+// ---- 設定 UI ----
+function buildPresetList() {
+  const list = $("presetList");
+  for (const p of PRESETS) {
+    const label = document.createElement("label");
+    label.className = "check";
+    const cb = document.createElement("input");
+    cb.type = "checkbox"; cb.className = "checkbox"; cb.id = "preset-" + p.id;
+    cb.checked = S.presets[p.id];
+    cb.addEventListener("change", () => { S.presets[p.id] = cb.checked; saveSettings(); render(); });
+    const txt = document.createElement("span");
+    const t = document.createElement("span");
+    t.className = "text-sm"; t.textContent = p.label;
+    const d = document.createElement("span");
+    d.className = "hint"; d.style.display = "block"; d.textContent = p.desc;
+    txt.append(t, d);
+    label.append(cb, txt);
+    list.append(label);
+  }
+}
+
+function syncControls() {
+  $("padVal").textContent = S.pad + "%";
+  $("radiusVal").textContent = S.radius + "%";
+  for (const b of document.querySelectorAll("[data-bg]")) b.setAttribute("aria-pressed", String(b.dataset.bg === S.bg));
+  for (const b of document.querySelectorAll("[data-scale]")) b.setAttribute("aria-pressed", String(b.dataset.scale === S.scale));
+  $("manifestSec").hidden = !S.presets.web;
+}
+
+function bindInputs() {
+  $("pad").value = S.pad; $("radius").value = S.radius;
+  $("bgColor").value = S.bgColor; $("themeColor").value = S.themeColor;
+  $("customSizes").value = S.custom; $("appName").value = S.appName; $("shortName").value = S.shortName;
+  const on = (id, ev, fn) => $(id).addEventListener(ev, () => { fn($(id).value); saveSettings(); render(); });
+  on("pad", "input", (v) => { S.pad = Number(v); });
+  on("radius", "input", (v) => { S.radius = Number(v); });
+  on("bgColor", "input", (v) => { S.bgColor = v; });
+  on("themeColor", "input", (v) => { S.themeColor = v; });
+  on("customSizes", "input", (v) => { S.custom = v; });
+  on("appName", "input", (v) => { S.appName = v; });
+  on("shortName", "input", (v) => { S.shortName = v; });
+  for (const b of document.querySelectorAll("[data-bg]")) b.addEventListener("click", () => { S.bg = b.dataset.bg; saveSettings(); render(); });
+  for (const b of document.querySelectorAll("[data-scale]")) b.addEventListener("click", () => { S.scale = b.dataset.scale; saveSettings(); render(); });
+}
+
+IT.initDrop({
+  zone: "drop",
+  input: "fileInput",
+  accept: (f) => f.type.startsWith("image/") || /\.svg$/i.test(f.name),
+  onFiles: (files) => setSource(files[0], files[0].name),
+  emptyMessage: "画像ファイルが見つかりませんでした",
+});
+
+// サンプルは samples/ から fetch する(file:// では fetch できないためボタンを無効化)
+if (location.protocol === "file:") {
+  $("btnSample").disabled = true;
+  $("sampleNote").textContent = "ローカルファイルとして開いているためサンプルは読み込めません(Webサーバー経由で開くと使えます)";
+}
+$("btnSample").addEventListener("click", async () => {
+  const b = $("btnSample");
+  b.disabled = true; $("sampleNote").textContent = "";
+  try {
+    const r = await fetch(SAMPLE_URL);
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    if (!(await setSource(await r.blob(), "sample-icon.png"))) throw new Error("decode failed");
+    renderNow();
+    b.disabled = false;
+  } catch (e) { $("sampleNote").textContent = "サンプルを読み込めませんでした(" + e.message + ")"; }
+});
+
+buildPresetList();
+bindInputs();
+render();
+</script>
+
+</body>
+</html>

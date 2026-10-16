@@ -12,6 +12,7 @@
 | --- | --- | --- | --- | --- |
 | Aseprite シート変換 | Aseprite のファイルをスプライトシートに書き出す。レイヤーの表示切替、キャンバスのセル分割、余白の切り詰め、並べ方(横一列・縦一列・グリッド・セルごとに行)を指定できる | `.ase` / `.aseprite` | スプライトシート PNG + Aseprite 互換 JSON | [`tools/aseprite-sheet-converter.html`](tools/aseprite-sheet-converter.html) |
 | Keyout Sprite Packer | キーカラー(マゼンタなど)を透過に変換し、連番画像を1枚のスプライトシートにまとめる。輝度をアルファに変える透過モードや、加算合成素材向けの色の扱いも選べる。1枚のシートを渡せば透過処理だけを行う | 連番 PNG / BMP、または既存のシート画像 | 透過済みスプライトシート PNG + JSON(独自形式、または Aseprite 互換の Hash / Array) | [`tools/keyout-sprite-packer.html`](tools/keyout-sprite-packer.html) |
+| アイコン一括生成 | 1枚の元画像から favicon 一式(favicon.ico・apple-touch-icon・Android Chrome 用・maskable)、iOS(AppIcon 1024px)、Android(mipmap 各密度・Play ストア用)、Windows(.ico)、任意サイズのアイコンをまとめて作る。余白・角丸・背景色・縮小方式(なめらか / ドット絵向けニアレスト)を指定できる | PNG / JPG / WebP / SVG | ZIP(PNG・ICO・site.webmanifest・HTML スニペット・Contents.json)、または 1 枚ずつ PNG | [`tools/icon-generator.html`](tools/icon-generator.html) |
 
 ### Aseprite シート変換
 
@@ -21,6 +22,10 @@
 
 ![Keyout Sprite Packer の画面](docs/images/keyout-sprite-packer.png)
 
+### アイコン一括生成
+
+![アイコン一括生成の画面](docs/images/icon-generator.png)
+
 ## 使い方
 
 次のどちらかで開きます。
@@ -29,7 +34,7 @@
 2. **ローカルで開く**: リポジトリを clone(または ZIP でダウンロード)し、`tools/` にある HTML をブラウザで直接開きます。
 
 開いたら、画像ファイルを画面にドラッグ&ドロップするか、ファイル選択ボタンから読み込みます。
-設定を調整してプレビューを確認し、「PNGを保存」「JSONを保存」で書き出します。
+設定を調整してプレビューを確認し、「PNGを保存」「JSONを保存」(アイコン一括生成は「ZIPで一括保存」)で書き出します。
 
 > [!NOTE]
 > ローカルの HTML を `file://` で開いた場合、ブラウザの制限で、外部ファイルを読み込む機能(サンプル素材の読み込みなど)が使えないことがあります。ツール本体の処理は通常どおり使えます。
