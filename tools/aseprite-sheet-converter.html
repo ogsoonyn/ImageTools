@@ -4,35 +4,108 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DotGothic16&family=IBM+Plex+Sans+JP:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
-<script>
-  // Tailwind Play CDN が出す「本番では使わないで」警告だけを抑止（他の警告はそのまま出す）
-  (() => {
-    const warn = console.warn;
-    console.warn = function (...a) {
-      if (typeof a[0] === "string" && a[0].includes("cdn.tailwindcss.com should not be used in production")) return;
-      return warn.apply(this, a);
-    };
-  })();
-</script>
-<script src="https://cdn.tailwindcss.com/3.4.17"></script>
-<script>
-  if (window.tailwind) tailwind.config = {
-    theme: {
-      extend: {
-        colors: {
-          bg: "var(--bg)", surface: "var(--surface)", surface2: "var(--surface-2)", line: "var(--line)",
-          fg: "var(--fg)", muted: "var(--muted)", accent: "var(--accent)", accentsoft: "var(--accent-soft)",
-          amber: "var(--amber)", danger: "var(--danger)",
-        },
-        fontFamily: {
-          display: ['"DotGothic16"', '"IBM Plex Sans JP"', "system-ui", "sans-serif"],
-          sans: ['"IBM Plex Sans JP"', '"Hiragino Sans"', '"Yu Gothic UI"', "system-ui", "sans-serif"],
-          mono: ['"JetBrains Mono"', "ui-monospace", "Consolas", "monospace"],
-        },
-      },
-    },
-  };
-</script>
+<style>
+/* ベース（Tailwind v3 Preflight のうち、このページで効くものだけを抜粋） */
+*,::before,::after{box-sizing:border-box;border:0 solid #e5e7eb}
+html{line-height:1.5;-webkit-text-size-adjust:100%;tab-size:4;font-family:"IBM Plex Sans JP","Hiragino Sans","Yu Gothic UI",system-ui,sans-serif;-webkit-tap-highlight-color:transparent}
+body{margin:0;line-height:inherit}
+h1,h2,h3,h4,h5,h6{font-size:inherit;font-weight:inherit}
+a{color:inherit;text-decoration:inherit}
+b,strong{font-weight:bolder}
+code,kbd,pre,samp{font-family:"JetBrains Mono",ui-monospace,Consolas,monospace;font-size:1em}
+button,input,optgroup,select,textarea{font-family:inherit;font-feature-settings:inherit;font-variation-settings:inherit;font-size:100%;font-weight:inherit;line-height:inherit;letter-spacing:inherit;color:inherit;margin:0;padding:0}
+button,select{text-transform:none}
+button,input:where([type=button]),input:where([type=reset]),input:where([type=submit]){-webkit-appearance:button;background-color:transparent;background-image:none}
+::-webkit-inner-spin-button,::-webkit-outer-spin-button{height:auto}
+::-webkit-file-upload-button{-webkit-appearance:button;font:inherit}
+summary{display:list-item}
+blockquote,dd,dl,figure,h1,h2,h3,h4,h5,h6,hr,p,pre{margin:0}
+menu,ol,ul{list-style:none;margin:0;padding:0}
+textarea{resize:vertical}
+input::placeholder,textarea::placeholder{opacity:1;color:#9ca3af}
+[role=button],button{cursor:pointer}
+:disabled{cursor:default}
+audio,canvas,embed,iframe,img,object,svg,video{display:block;vertical-align:middle}
+img,video{max-width:100%;height:auto}
+[hidden]:where(:not([hidden=until-found])){display:none}
+/* ユーティリティ（Tailwind互換の最小セット。実際に使っているクラスだけ。CDN不使用で警告を出さない） */
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border-width:0}
+.mx-auto{margin-left:auto;margin-right:auto}
+.-mt-2{margin-top:-.5rem}
+.mt-1{margin-top:.25rem}
+.mt-2{margin-top:.5rem}
+.mt-3{margin-top:.75rem}
+.inline-block{display:inline-block}
+.flex{display:flex}
+.grid{display:grid}
+.aspect-square{aspect-ratio:1/1}
+.max-h-\[60vh\]{max-height:60vh}
+.min-h-\[1\.2em\]{min-height:1.2em}
+.min-h-\[160px\]{min-height:160px}
+.min-h-\[260px\]{min-height:260px}
+.w-20{width:5rem}
+.w-8{width:2rem}
+.min-w-0{min-width:0}
+.max-w-\[1400px\]{max-width:1400px}
+.max-w-full{max-width:100%}
+.flex-1{flex:1 1 0%}
+.shrink-0{flex-shrink:0}
+.cursor-pointer{cursor:pointer}
+.list-disc{list-style-type:disc}
+.grid-cols-2{grid-template-columns:repeat(2,minmax(0,1fr))}
+.grid-cols-\[auto_1fr\]{grid-template-columns:auto 1fr}
+.flex-col{flex-direction:column}
+.flex-wrap{flex-wrap:wrap}
+.place-items-center{place-items:center}
+.items-start{align-items:flex-start}
+.items-end{align-items:flex-end}
+.items-center{align-items:center}
+.items-baseline{align-items:baseline}
+.justify-between{justify-content:space-between}
+.gap-0\.5{gap:.125rem}
+.gap-1{gap:.25rem}
+.gap-1\.5{gap:.375rem}
+.gap-2{gap:.5rem}
+.gap-3{gap:.75rem}
+.gap-4{gap:1rem}
+.gap-x-4{-moz-column-gap:1rem;column-gap:1rem}
+.gap-y-1{row-gap:.25rem}
+.space-y-1>:not([hidden])~:not([hidden]){--tw-space-y-reverse:0;margin-top:calc(.25rem*(1 - var(--tw-space-y-reverse)));margin-bottom:calc(.25rem*var(--tw-space-y-reverse))}
+.overflow-auto{overflow:auto}
+.overflow-hidden,.truncate{overflow:hidden}
+.truncate{text-overflow:ellipsis;white-space:nowrap}
+.break-words{overflow-wrap:break-word}
+.break-all{word-break:break-all}
+.rounded{border-radius:.25rem}
+.rounded-md{border-radius:.375rem}
+.border{border-width:1px}
+.border-line{border-color:var(--line)}
+.bg-bg{background-color:var(--bg)}
+.p-4{padding:1rem}
+.px-1{padding-left:.25rem;padding-right:.25rem}
+.px-3{padding-left:.75rem;padding-right:.75rem}
+.py-0\.5{padding-top:.125rem;padding-bottom:.125rem}
+.py-2{padding-top:.5rem;padding-bottom:.5rem}
+.pb-4{padding-bottom:1rem}
+.pl-5{padding-left:1.25rem}
+.text-right{text-align:right}
+.align-top{vertical-align:top}
+.text-2xl{font-size:1.5rem;line-height:2rem}
+.text-\[11px\]{font-size:11px}
+.text-\[12px\]{font-size:12px}
+.text-\[13px\]{font-size:13px}
+.text-sm{font-size:.875rem;line-height:1.25rem}
+.font-semibold{font-weight:600}
+.uppercase{text-transform:uppercase}
+.leading-tight{line-height:1.25}
+.text-amber{color:var(--amber)}
+.text-danger{color:var(--danger)}
+.text-fg{color:var(--fg)}
+.text-muted{color:var(--muted)}
+@media (min-width:640px){.sm\:text-3xl{font-size:1.875rem;line-height:2.25rem}}
+@media (min-width:768px){.md\:grid-cols-\[minmax\(0\2c 320px\)_minmax\(0\2c 1fr\)\]{grid-template-columns:minmax(0,320px) minmax(0,1fr)}}
+@media (min-width:1024px){.lg\:grid-cols-\[320px_minmax\(0\2c 1fr\)\]{grid-template-columns:320px minmax(0,1fr)}}
+</style>
 <style>
   /* Layout: 左に操作サイドバー、右にシート（主役）＋下段に再生とJSON。スマホでは縦積み。 */
   :root {
