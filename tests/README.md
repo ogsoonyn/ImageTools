@@ -4,6 +4,7 @@
 
 - コンソールに error / warning が出ないこと、ページ例外が起きないこと
 - 各ツールで「サンプルを読み込む」を押して `samples/` のサンプルを読み込み、「PNGを保存」「JSONを保存」で中身のある PNG / JSON がダウンロードされること
+- Keyout Sprite Packer の設定が `localStorage` に保存されてリロード後に復元され、「設定をリセット」で初期値に戻ること。`localStorage` が使えない・値が壊れている場合もエラーにならないこと(`test_keyout_settings.py`)
 
 Google Fonts へのリクエストはテスト内で空の応答に差し替えています(外部CDNの一時的な不調でテストが落ちないように)。サンプルは `fetch` で読み込むため、`file://` ではなく HTTP 経由で開く必要があります。
 
