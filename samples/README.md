@@ -9,6 +9,8 @@ GitHub Pages などの Web サーバー経由で開いたときだけ使えま�
 | `aseprite/slime.aseprite` | `tools/aseprite-sheet-converter.html` | 複数レイヤー・タグ付きのスライムのアニメーション |
 | `icon/sample-icon.png` | `tools/icon-generator.html` | 図形だけで描いた 1024×1024 の透過アイコン(山と太陽) |
 
+`tools/jiggle-animator.html` のサンプル(ドット絵のスライム、イラストのゼリー)はファイルを使わず、ツール内のコードで図形を組み合わせてその場で描きます。そのため `file://` で開いた場合も使えます。
+
 ## 出所とライセンス
 
 `keyout/` と `aseprite/` は、もともと各ツールの HTML に base64 で埋め込まれていたサンプルをそのままファイルに書き出したものです（Issue #7）。`icon/` はアイコン一括生成ツールの追加時に、図形を組み合わせてプログラムで描いたものです。
