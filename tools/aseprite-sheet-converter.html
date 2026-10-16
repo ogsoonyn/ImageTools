@@ -185,11 +185,15 @@ img,video{max-width:100%;height:auto}
       <h1 class="title text-2xl sm:text-3xl leading-tight">Aseprite シート変換</h1>
       <p class="text-muted text-sm mt-1">.ase / .aseprite を読み込み、スプライトシートPNGとAseprite互換JSONに書き出します。処理はすべてこのブラウザ内で行われます。</p>
     </div>
-    <label class="btn btn-primary" for="file-input">
-      <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M7 1h2v8.6l2.8-2.8 1.4 1.4L8 13.4 2.8 8.2l1.4-1.4L7 9.6zM2 13h12v2H2z" transform="rotate(180 8 8)"/></svg>
-      ファイルを開く
-    </label>
-    <input id="file-input" type="file" accept=".ase,.aseprite" class="sr-only">
+    <div class="flex flex-wrap items-center justify-end gap-2">
+      <span id="sample-note" class="text-muted text-[12px]"></span>
+      <button id="load-sample" class="btn" type="button">サンプルを読み込む</button>
+      <label class="btn btn-primary" for="file-input">
+        <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M7 1h2v8.6l2.8-2.8 1.4 1.4L8 13.4 2.8 8.2l1.4-1.4L7 9.6zM2 13h12v2H2z" transform="rotate(180 8 8)"/></svg>
+        ファイルを開く
+      </label>
+      <input id="file-input" type="file" accept=".ase,.aseprite" class="sr-only">
+    </div>
   </header>
 
   <div class="grid gap-4 lg:grid-cols-[320px_minmax(0,1fr)] items-start">
@@ -690,7 +694,7 @@ const AseParser = (() => {
 </script>
 <script>
 (() => {
-  const SAMPLE_B64 = "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";
+  const SAMPLE_URL = "../samples/aseprite/slime.aseprite";
   const $ = (id) => document.getElementById(id);
   const state = {
     doc: null, title: "sprite", ext: "aseprite", isSample: false,
@@ -725,7 +729,22 @@ const AseParser = (() => {
       setNote(name + " を読み込めませんでした: " + e.message, true);
     }
   }
-  function b64ToBuf(b64) { const s = atob(b64); const u = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i); return u.buffer; }
+  // サンプルは samples/ から fetch する（file:// では fetch できないためボタンを無効化）
+  if (location.protocol === "file:") {
+    $("load-sample").disabled = true;
+    $("sample-note").textContent = "ローカルファイルとして開いているためサンプルは使えません（Webサーバー経由で開くと使えます）";
+  }
+  $("load-sample").addEventListener("click", async () => {
+    const b = $("load-sample"); b.disabled = true; $("sample-note").textContent = "";
+    try {
+      const r = await fetch(SAMPLE_URL);
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      await loadBuffer(await r.arrayBuffer(), "slime.aseprite", true);
+      b.disabled = false;
+    } catch (e) {
+      $("sample-note").textContent = "サンプルを読み込めませんでした（" + e.message + "）";
+    }
+  });
   async function openFile(file) {
     if (!file) return;
     if (!/\.(ase|aseprite)$/i.test(file.name)) { setNote(file.name + " は .ase / .aseprite ファイルではありません。", true); return; }
@@ -1145,7 +1164,6 @@ const AseParser = (() => {
 
   // ---------- boot ----------
   syncPlayBtn();
-  loadBuffer(b64ToBuf(SAMPLE_B64), "slime.aseprite", true);
 })();
 </script>
 
