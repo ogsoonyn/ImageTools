@@ -113,13 +113,13 @@
       <p class="text-muted text-sm mt-1">.ase / .aseprite を読み込み、スプライトシートPNGとAseprite互換JSONに書き出します。処理はすべてこのブラウザ内で行われます。</p>
     </div>
     <div class="flex flex-wrap items-center justify-end gap-2">
-    <span id="sample-note" class="text-muted text-[12px]"></span>
-    <button id="load-sample" class="btn" type="button">サンプルを読み込む</button>
-    <label class="btn btn-primary" for="file-input">
-      <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M7 1h2v8.6l2.8-2.8 1.4 1.4L8 13.4 2.8 8.2l1.4-1.4L7 9.6zM2 13h12v2H2z" transform="rotate(180 8 8)"/></svg>
-      ファイルを開く
-    </label>
-    <input id="file-input" type="file" accept=".ase,.aseprite" class="sr-only">
+      <span id="sample-note" class="text-muted text-[12px]"></span>
+      <button id="load-sample" class="btn" type="button">サンプルを読み込む</button>
+      <label class="btn btn-primary" for="file-input">
+        <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M7 1h2v8.6l2.8-2.8 1.4 1.4L8 13.4 2.8 8.2l1.4-1.4L7 9.6zM2 13h12v2H2z" transform="rotate(180 8 8)"/></svg>
+        ファイルを開く
+      </label>
+      <input id="file-input" type="file" accept=".ase,.aseprite" class="sr-only">
     </div>
   </header>
 
@@ -662,7 +662,7 @@ const AseParser = (() => {
     $("sample-note").textContent = "ローカルファイルとして開いているためサンプルは使えません（Webサーバー経由で開くと使えます）";
   }
   $("load-sample").addEventListener("click", async () => {
-    const b = $("load-sample"); b.disabled = true;
+    const b = $("load-sample"); b.disabled = true; $("sample-note").textContent = "";
     try {
       const r = await fetch(SAMPLE_URL);
       if (!r.ok) throw new Error("HTTP " + r.status);

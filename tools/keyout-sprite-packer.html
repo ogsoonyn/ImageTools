@@ -503,7 +503,7 @@ syncLabels();
 // サンプルは samples/ から fetch する（file:// では fetch できないためボタンを無効化）
 if(location.protocol==='file:'){ $('btnSample').disabled=true; $('sampleNote').textContent='ローカルファイルとして開いているためサンプルは読み込めません（Webサーバー経由で開くと使えます）'; }
 $('btnSample').onclick=async()=>{
-  const b=$('btnSample'); b.disabled=true;
+  const b=$('btnSample'); b.disabled=true; $('sampleNote').textContent='';
   try{
     const list=await Promise.all(SAMPLE_FILES.map(async name=>{
       const r=await fetch(SAMPLE_DIR+name); if(!r.ok) throw new Error(name+': HTTP '+r.status);
