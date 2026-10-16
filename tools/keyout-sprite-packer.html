@@ -116,10 +116,6 @@ input[type=checkbox]{accent-color:var(--accent);margin:0}
 input[type=range]{width:100%;accent-color:var(--accent)}
 input[type=number],input[type=text],select{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:4px 8px;color:var(--fg);font-family:var(--font-mono);font-size:13px;min-width:0}
 input[type=color]{width:36px;height:30px;border:1px solid var(--line);border-radius:6px;background:var(--bg);padding:2px;cursor:pointer}
-.seg{display:inline-flex;border:1px solid var(--line);border-radius:7px;overflow:hidden;flex-wrap:wrap}
-.seg button{padding:5px 10px;font-size:12.5px;background:var(--panel);color:var(--muted);border-right:1px solid var(--line);cursor:pointer}
-.seg button:last-child{border-right:0}
-.seg button[aria-pressed="true"]{background:var(--accent);color:var(--accent-fg);font-weight:700}
 .bg-black{background:#000}.bg-white{background:#fff}.bg-gray{background:#6b7378}
 .stage canvas{image-rendering:auto}
 .stage.pixel canvas{image-rendering:pixelated}
@@ -149,7 +145,7 @@ input[type=color]{width:36px;height:30px;border:1px solid var(--line);border-rad
     <div class="actions">
       <button class="btn btn-primary" id="btnPng" type="button">PNGを保存</button>
       <button class="btn" id="btnJson" type="button">JSONを保存</button>
-      <button class="btn btn-ghost" type="button" id="btnResetPrefs" title="キーカラー・透過モード・シート配置・FPS などの設定を初期値に戻します">設定をリセット</button>
+      <button class="btn btn-ghost" type="button" id="btnResetPrefs" title="キーカラー・透過モード・列数/余白・JSON形式・FPS などの設定を初期値に戻します（出力ファイル名と分割数は対象外）">設定をリセット</button>
       <button class="btn btn-ghost" type="button" id="themeToggle">テーマ: 自動</button>
     </div>
   </header>
@@ -190,9 +186,9 @@ input[type=color]{width:36px;height:30px;border:1px solid var(--line);border-rad
 
       <section class="flex flex-col gap-3">
         <h2 class="sec-title">透過モード</h2>
-        <div class="seg" role="group" aria-label="透過モード">
-          <button type="button" data-mode="key" aria-pressed="true">キー色のみ</button>
-          <button type="button" data-mode="lum" aria-pressed="false">＋輝度をアルファに</button>
+        <div class="join" role="group" aria-label="透過モード">
+          <button class="btn btn-sm" type="button" data-mode="key" aria-pressed="true">キー色のみ</button>
+          <button class="btn btn-sm" type="button" data-mode="lum" aria-pressed="false">＋輝度をアルファに</button>
         </div>
         <p class="hint" id="modeHint"></p>
         <div id="lumOpts" class="flex flex-col gap-3" hidden>
@@ -279,11 +275,11 @@ input[type=color]{width:36px;height:30px;border:1px solid var(--line);border-rad
         <div class="flex flex-wrap items-center justify-between gap-2">
           <h2 class="sec-title">スプライトシート</h2>
           <div class="flex flex-wrap gap-2 items-center">
-            <div class="seg" role="group" aria-label="背景" id="bgSeg">
-              <button type="button" data-bg="checker" aria-pressed="true">市松</button>
-              <button type="button" data-bg="black" aria-pressed="false">黒</button>
-              <button type="button" data-bg="gray" aria-pressed="false">灰</button>
-              <button type="button" data-bg="white" aria-pressed="false">白</button>
+            <div class="join" role="group" aria-label="背景" id="bgSeg">
+              <button class="btn btn-sm" type="button" data-bg="checker" aria-pressed="true">市松</button>
+              <button class="btn btn-sm" type="button" data-bg="black" aria-pressed="false">黒</button>
+              <button class="btn btn-sm" type="button" data-bg="gray" aria-pressed="false">灰</button>
+              <button class="btn btn-sm" type="button" data-bg="white" aria-pressed="false">白</button>
             </div>
             <label class="flex items-center gap-1 hint"><input type="checkbox" id="showGrid" checked> セル枠</label>
           </div>
@@ -295,9 +291,9 @@ input[type=color]{width:36px;height:30px;border:1px solid var(--line);border-rad
         <div class="flex flex-wrap items-center justify-between gap-2">
           <h2 class="sec-title">アニメーション確認</h2>
           <div class="flex flex-wrap gap-2 items-center">
-            <div class="seg" role="group" aria-label="合成方法" id="blendSeg">
-              <button type="button" data-blend="source-over" aria-pressed="true">通常合成</button>
-              <button type="button" data-blend="lighter" aria-pressed="false">加算合成</button>
+            <div class="join" role="group" aria-label="合成方法" id="blendSeg">
+              <button class="btn btn-sm" type="button" data-blend="source-over" aria-pressed="true">通常合成</button>
+              <button class="btn btn-sm" type="button" data-blend="lighter" aria-pressed="false">加算合成</button>
             </div>
             <label class="flex items-center gap-1 hint"><input type="checkbox" id="showOrig"> 処理前</label>
           </div>
@@ -759,9 +755,9 @@ function applyPrefs(p){
       if(typeof v!=='string') return;
       if(el.tagName==='SELECT'){ if([...el.options].some(o=>o.value===v)) el.value=v; return; }
       if(el.type==='color'){ if(/^#[0-9a-f]{6}$/i.test(v)) el.value=v.toLowerCase(); return; }
-      // 数値は min〜max の範囲内だけ受け付ける（列数の 0 = 自動のように初期値が min 未満のものは初期値も許可）
+      // 数値は min〜max の範囲内の整数だけ受け付ける（列数の 0 = 自動のように初期値が min 未満のものは初期値も許可）
       const n=Number(v), lo=Math.min(+el.min,+PREF_DEFAULTS[id]);
-      if(v.trim()!==''&&Number.isFinite(n)&&n>=lo&&n<=+el.max) el.value=String(n);
+      if(v.trim()!==''&&Number.isInteger(n)&&n>=lo&&n<=+el.max) el.value=String(n);
     });
     for(const k in PREF_SEGS){
       const b=typeof p[k]==='string'&&[...document.querySelectorAll(PREF_SEGS[k]+' button')].find(x=>x.dataset[k]===p[k]);

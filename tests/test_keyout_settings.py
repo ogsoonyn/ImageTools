@@ -83,3 +83,24 @@ def test_broken_storage_does_not_break_tool(browser: Browser, base_url: str):
         assert errors == []
     finally:
         page.context.close()
+
+
+def test_invalid_values_are_ignored(browser: Browser, base_url: str):
+    # 範囲外・小数・存在しない選択肢は項目ごとに捨て、初期値のまま使う
+    script = """
+      localStorage.setItem('imagetools:keyout-sprite-packer:settings',
+        JSON.stringify({tol: '999', cols: '2.5', pad: '3', jsonFormat: 'zzz', mode: 'nope', keyColor: 'red', unblend: 'no'}));
+    """
+    page, errors = _new_page(browser, script)
+    try:
+        page.goto(f"{base_url}/{KEYOUT}")
+        expect(page.locator("#tol")).to_have_value("32")
+        expect(page.locator("#cols")).to_have_value("0")
+        expect(page.locator("#pad")).to_have_value("3")
+        expect(page.locator("#jsonFormat")).to_have_value("native")
+        expect(page.locator('[data-mode="key"]')).to_have_attribute("aria-pressed", "true")
+        expect(page.locator("#keyColor")).to_have_value("#ff00ff")
+        expect(page.locator("#unblend")).to_be_checked()
+        assert errors == []
+    finally:
+        page.context.close()
