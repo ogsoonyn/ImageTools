@@ -39,15 +39,16 @@ h1{font-size:26px;line-height:1.3;font-weight:700;text-wrap:balance}
 .btn:hover{border-color:var(--accent)}
 .btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .card h2 a:focus-visible{outline:none}
-.card:focus-within{border-color:var(--accent);outline:2px solid var(--accent);outline-offset:2px}
+.card:has(h2 a:focus-visible){border-color:var(--accent);outline:2px solid var(--accent);outline-offset:2px}
 .cards{display:grid;gap:16px;grid-template-columns:repeat(auto-fill,minmax(min(100%,300px),1fr))}
 .card{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px;display:flex;flex-direction:column;gap:12px;min-width:0}
 .card h2{font-size:18px;line-height:1.4;font-weight:700}
 .card h2 a{color:inherit;text-decoration:none}
-.card h2 a::after{content:"";position:absolute;inset:0}
+/* タイトルのリンクをカード全体に広げ、説明文や入出力欄をクリックしても開けるようにする */
+.card h2 a::after{content:"";position:absolute;inset:0;border-radius:inherit}
 .card:hover{border-color:var(--accent)}
+.card:hover h2 a,.card h2 a:focus-visible{color:var(--accent)}
 .desc{font-size:14px}
-.desc,dl{position:relative;z-index:1}
 dl{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 12px;font-size:13px}
 dt{color:var(--muted)}
 dd{font-family:var(--font-mono);font-size:12px;line-height:1.9}
