@@ -1,218 +1,195 @@
-<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Aseprite シート変換</title>
 <meta name="claude:viewport-fit-sides" content="cover">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DotGothic16&family=IBM+Plex+Sans+JP:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<!-- common:begin theme-init -->
+<script>
+  // 描画前に保存済みテーマを反映してちらつきを防ぐ（localStorage が使えなくても動く）
+  (() => {
+    try {
+      const t = localStorage.getItem("imagetools:theme");
+      if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
+    } catch (e) { /* 保存領域が使えない環境では OS 設定に従う */ }
+  })();
+</script>
+<!-- common:end theme-init -->
 <style>
-/* ベース（Tailwind v3 Preflight のうち、このページで効くものだけを抜粋） */
-*,::before,::after{box-sizing:border-box;border:0 solid #e5e7eb}
-html{line-height:1.5;-webkit-text-size-adjust:100%;tab-size:4;font-family:"IBM Plex Sans JP","Hiragino Sans","Yu Gothic UI",system-ui,sans-serif;-webkit-tap-highlight-color:transparent}
-body{margin:0;line-height:inherit}
-h1,h2,h3,h4,h5,h6{font-size:inherit;font-weight:inherit}
-a{color:inherit;text-decoration:inherit}
-b,strong{font-weight:bolder}
-code,kbd,pre,samp{font-family:"JetBrains Mono",ui-monospace,Consolas,monospace;font-size:1em}
-button,input,optgroup,select,textarea{font-family:inherit;font-feature-settings:inherit;font-variation-settings:inherit;font-size:100%;font-weight:inherit;line-height:inherit;letter-spacing:inherit;color:inherit;margin:0;padding:0}
-button,select{text-transform:none}
-button,input:where([type=button]),input:where([type=reset]),input:where([type=submit]){-webkit-appearance:button;background-color:transparent;background-image:none}
-::-webkit-inner-spin-button,::-webkit-outer-spin-button{height:auto}
-::-webkit-file-upload-button{-webkit-appearance:button;font:inherit}
-summary{display:list-item}
-blockquote,dd,dl,figure,h1,h2,h3,h4,h5,h6,hr,p,pre{margin:0}
-menu,ol,ul{list-style:none;margin:0;padding:0}
-textarea{resize:vertical}
-input::placeholder,textarea::placeholder{opacity:1;color:#9ca3af}
-[role=button],button{cursor:pointer}
-:disabled{cursor:default}
-audio,canvas,embed,iframe,img,object,svg,video{display:block;vertical-align:middle}
-img,video{max-width:100%;height:auto}
-[hidden]:where(:not([hidden=until-found])){display:none}
-/* ユーティリティ（Tailwind互換の最小セット。実際に使っているクラスだけ。CDN不使用で警告を出さない） */
-.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border-width:0}
-.mx-auto{margin-left:auto;margin-right:auto}
-.-mt-2{margin-top:-.5rem}
-.mt-1{margin-top:.25rem}
-.mt-2{margin-top:.5rem}
-.mt-3{margin-top:.75rem}
-.inline-block{display:inline-block}
-.flex{display:flex}
-.grid{display:grid}
-.aspect-square{aspect-ratio:1/1}
-.max-h-\[60vh\]{max-height:60vh}
-.min-h-\[1\.2em\]{min-height:1.2em}
-.min-h-\[160px\]{min-height:160px}
-.min-h-\[260px\]{min-height:260px}
-.w-20{width:5rem}
-.w-8{width:2rem}
-.min-w-0{min-width:0}
-.max-w-\[1400px\]{max-width:1400px}
-.max-w-full{max-width:100%}
-.flex-1{flex:1 1 0%}
-.shrink-0{flex-shrink:0}
-.cursor-pointer{cursor:pointer}
-.list-disc{list-style-type:disc}
+/* common:begin theme-vars */
+/* テーマ変数。既存ツールの変数名（--bg/--panel/--line/--fg/--muted/--accent/--accent-fg/--warn/--chk-*）を踏襲し、
+   Aseprite 側の名前（--surface/--surface-2/--accent-soft/--danger/--checker-*）も別名として用意する */
+:root{
+  --bg:#eef1f3; --panel:#ffffff; --surface-2:#e4e8ec; --line:#d6dce1; --fg:#1b2329; --muted:#5d6b75;
+  --accent:#0d7f86; --accent-fg:#ffffff; --accent-soft:#d4eef0; --warn:#a1560b; --danger:#b42318;
+  --chk-a:#ffffff; --chk-b:#d9dde1;
+  --surface:var(--panel); --checker-a:var(--chk-a); --checker-b:var(--chk-b);
+  --font-body:"Hiragino Sans","Yu Gothic UI","Noto Sans JP",system-ui,sans-serif;
+  --font-mono:ui-monospace,"Cascadia Mono",Consolas,"JetBrains Mono",monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#12171b; --panel:#1a2126; --surface-2:#232b31; --line:#2c363d; --fg:#e3e9ed; --muted:#93a2ad;
+  --accent:#3cc3c6; --accent-fg:#0b1417; --accent-soft:#163a3d; --warn:#e7a35a; --danger:#ff8a7a;
+  --chk-a:#2a3238; --chk-b:#20272c; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#12171b; --panel:#1a2126; --surface-2:#232b31; --line:#2c363d; --fg:#e3e9ed; --muted:#93a2ad;
+  --accent:#3cc3c6; --accent-fg:#0b1417; --accent-soft:#163a3d; --warn:#e7a35a; --danger:#ff8a7a;
+  --chk-a:#2a3238; --chk-b:#20272c; color-scheme:dark}
+/* common:end theme-vars */
+
+/* common:begin base */
+*,*::before,*::after{box-sizing:border-box}
+h1,h2,h3,p,dl,dd{margin:0}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;margin:0}
+html,body{background:var(--bg);color:var(--fg)}
+body{margin:0;font-family:var(--font-body);font-size:14px;line-height:1.6}
+.wrap{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:16px 40px;max-width:1280px;margin:0 auto}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+h1{text-wrap:balance}
+[hidden]{display:none!important}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+@media (prefers-reduced-motion: reduce){*{transition:none!important}}
+/* common:end base */
+
+/* common:begin utilities */
+/* Tailwind 互換の最小ユーティリティ（CDN 不使用。使うクラスだけ書き足す） */
+.flex{display:flex}.grid{display:grid}.flex-col{flex-direction:column}.flex-wrap{flex-wrap:wrap}
+.items-center{align-items:center}.items-end{align-items:flex-end}.justify-between{justify-content:space-between}.justify-center{justify-content:center}
+.gap-1{gap:4px}.gap-2{gap:8px}.gap-3{gap:12px}.gap-4{gap:16px}.gap-5{gap:20px}
+.mb-2{margin-bottom:8px}.mb-4{margin-bottom:16px}.mt-2{margin-top:8px}.p-3{padding:12px}.p-4{padding:16px}
+.min-w-0{min-width:0}.w-full{width:100%}
 .grid-cols-2{grid-template-columns:repeat(2,minmax(0,1fr))}
-.grid-cols-\[auto_1fr\]{grid-template-columns:auto 1fr}
-.flex-col{flex-direction:column}
-.flex-wrap{flex-wrap:wrap}
-.place-items-center{place-items:center}
-.items-start{align-items:flex-start}
-.items-end{align-items:flex-end}
-.items-center{align-items:center}
-.items-baseline{align-items:baseline}
-.justify-between{justify-content:space-between}
-.gap-0\.5{gap:.125rem}
-.gap-1{gap:.25rem}
-.gap-1\.5{gap:.375rem}
-.gap-2{gap:.5rem}
-.gap-3{gap:.75rem}
-.gap-4{gap:1rem}
-.gap-x-4{-moz-column-gap:1rem;column-gap:1rem}
-.gap-y-1{row-gap:.25rem}
-.space-y-1>:not([hidden])~:not([hidden]){--tw-space-y-reverse:0;margin-top:calc(.25rem*(1 - var(--tw-space-y-reverse)));margin-bottom:calc(.25rem*var(--tw-space-y-reverse))}
-.overflow-auto{overflow:auto}
-.overflow-hidden,.truncate{overflow:hidden}
-.truncate{text-overflow:ellipsis;white-space:nowrap}
-.break-words{overflow-wrap:break-word}
-.break-all{word-break:break-all}
-.rounded{border-radius:.25rem}
-.rounded-md{border-radius:.375rem}
-.border{border-width:1px}
-.border-line{border-color:var(--line)}
-.bg-bg{background-color:var(--bg)}
-.p-4{padding:1rem}
-.px-1{padding-left:.25rem;padding-right:.25rem}
-.px-3{padding-left:.75rem;padding-right:.75rem}
-.py-0\.5{padding-top:.125rem;padding-bottom:.125rem}
-.py-2{padding-top:.5rem;padding-bottom:.5rem}
-.pb-4{padding-bottom:1rem}
-.pl-5{padding-left:1.25rem}
-.text-right{text-align:right}
-.align-top{vertical-align:top}
-.text-2xl{font-size:1.5rem;line-height:2rem}
-.text-\[11px\]{font-size:11px}
-.text-\[12px\]{font-size:12px}
-.text-\[13px\]{font-size:13px}
-.text-sm{font-size:.875rem;line-height:1.25rem}
-.font-semibold{font-weight:600}
-.uppercase{text-transform:uppercase}
-.leading-tight{line-height:1.25}
-.text-amber{color:var(--amber)}
-.text-danger{color:var(--danger)}
-.text-fg{color:var(--fg)}
+@media (min-width:640px){.sm\:grid-cols-4{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.text-xs{font-size:12px}.text-sm{font-size:13px}.text-xl{font-size:20px;line-height:1.4}.font-bold{font-weight:700}
 .text-muted{color:var(--muted)}
-@media (min-width:640px){.sm\:text-3xl{font-size:1.875rem;line-height:2.25rem}}
+.mono,.num{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+/* common:end utilities */
+
+/* common:begin components */
+/* daisyUI 風コンポーネント（必要分のみ） */
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px}
+.sec-title{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:700}
+.hint{font-size:12px;color:var(--muted)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--line);background:var(--panel);color:var(--fg);border-radius:7px;padding:6px 12px;font-size:13px;font-weight:500;line-height:1.4;cursor:pointer;white-space:nowrap;text-decoration:none;transition:background .15s,border-color .15s}
+.btn:hover{border-color:var(--accent)}
+.btn-primary{background:var(--accent);color:var(--accent-fg);border-color:var(--accent);font-weight:700}
+.btn-primary:hover{filter:brightness(1.08)}
+.btn-ghost{border-color:transparent;background:transparent}
+.btn-ghost:hover{background:var(--surface-2);border-color:transparent}
+.btn-sm{padding:3px 8px;font-size:12px}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.is-active,.btn[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--accent)}
+.join{display:inline-flex;flex-wrap:wrap}
+.join>.btn{border-radius:0;margin-left:-1px}
+.join>.btn:first-child{border-radius:7px 0 0 7px;margin-left:0}
+.join>.btn:last-child{border-radius:0 7px 7px 0}
+.select,.input{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:4px 8px;color:var(--fg);font-family:var(--font-mono);font-size:13px;min-width:0}
+.range{width:100%;accent-color:var(--accent)}
+.checkbox{accent-color:var(--accent);margin:0}
+.badge{display:inline-block;font-size:11px;font-weight:700;padding:1px 8px;border-radius:999px;background:var(--accent);color:var(--accent-fg)}
+.warn{color:var(--warn)}.danger{color:var(--danger)}
+.drop{display:block;border:1.5px dashed var(--line);border-radius:8px;padding:14px;text-align:center;cursor:pointer;transition:border-color .15s,background .15s}
+.drop.over,.drop:hover,.drop:has(+ .sr-only:focus){border-color:var(--accent);background:var(--accent-soft)}
+.drop:has(+ .sr-only:focus-visible){outline:2px solid var(--accent);outline-offset:2px}
+.bg-checker{background-color:var(--chk-a);background-image:linear-gradient(45deg,var(--chk-b) 25%,transparent 25%,transparent 75%,var(--chk-b) 75%),linear-gradient(45deg,var(--chk-b) 25%,transparent 25%,transparent 75%,var(--chk-b) 75%);background-size:16px 16px;background-position:0 0,8px 8px}
+.stage{border-radius:8px;border:1px solid var(--line);overflow:auto;max-height:70vh;display:flex;align-items:flex-start;justify-content:center;padding:12px}
+.stage canvas{max-width:100%;height:auto}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));background:var(--fg);color:var(--bg);padding:8px 14px;border-radius:8px;font-size:13px;opacity:0;pointer-events:none;transition:opacity .2s;z-index:100;max-width:calc(100vw - 32px)}
+.toast.show{opacity:1}
+/* common:end components */
+
+/* common:begin header-style */
+.app-header{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 12px;margin-bottom:16px}
+.app-header .back{display:inline-block;padding:4px 0;font-size:12px;color:var(--muted);text-decoration:none}
+.app-header .back:hover{color:var(--accent)}
+.app-header .actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+/* common:end header-style */
+
+/* ---- ここから下はツール固有のスタイル ---- */
+/* Layout: 左に操作サイドバー、右にシート（主役）＋下段に再生とJSON。スマホでは縦積み。 */
+/* シート上の枠と番号の色（確認用の表示。書き出しには含まれない） */
+:root{--amber:#c97f00}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--amber:#f0b23a}}
+:root[data-theme="dark"]{--amber:#f0b23a}
+ul{margin:0;padding:0;list-style:none}
+code{font-family:var(--font-mono);font-size:1em}
+canvas.pixel{image-rendering:pixelated;image-rendering:crisp-edges;display:block}
+/* ツール固有で使うユーティリティ（共通ブロックにないものだけ） */
+.-mt-2{margin-top:-8px}.mt-1{margin-top:4px}.mt-3{margin-top:12px}
+.inline-block{display:inline-block}.align-top{vertical-align:top}
+.aspect-square{aspect-ratio:1/1}.max-w-full{max-width:100%}
+.max-h-\[60vh\]{max-height:60vh}.min-h-\[1\.2em\]{min-height:1.2em}.min-h-\[160px\]{min-height:160px}.min-h-\[260px\]{min-height:260px}
+.w-20{width:80px}.w-8{width:32px}.flex-1{flex:1 1 0%}.shrink-0{flex-shrink:0}
+.cursor-pointer{cursor:pointer}.list-disc{list-style-type:disc}.pl-5{padding-left:20px}
+.grid-cols-\[auto_1fr\]{grid-template-columns:auto 1fr}
+.place-items-center{place-items:center}.items-start{align-items:flex-start}.items-baseline{align-items:baseline}.justify-end{justify-content:flex-end}
+.gap-0\.5{gap:2px}.gap-1\.5{gap:6px}.gap-x-4{column-gap:16px}.gap-y-1{row-gap:4px}
+.space-y-1>:not([hidden])~:not([hidden]){margin-top:4px}
+.overflow-auto{overflow:auto}.overflow-hidden{overflow:hidden}
+.truncate{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.break-words{overflow-wrap:break-word}.break-all{word-break:break-all}
+.rounded{border-radius:4px}.rounded-md{border-radius:6px}.border{border:1px solid var(--line)}
+.bg-bg{background-color:var(--bg)}
+.px-1{padding-left:4px;padding-right:4px}.px-3{padding-left:12px;padding-right:12px}.py-0\.5{padding-top:2px;padding-bottom:2px}.py-2{padding-top:8px;padding-bottom:8px}
+.text-right{text-align:right}.text-\[11px\]{font-size:11px}.text-\[12px\]{font-size:12px}.text-\[13px\]{font-size:13px}
+.font-semibold{font-weight:600}.text-fg{color:var(--fg)}.text-amber{color:var(--amber)}
 @media (min-width:768px){.md\:grid-cols-\[minmax\(0\2c 320px\)_minmax\(0\2c 1fr\)\]{grid-template-columns:minmax(0,320px) minmax(0,1fr)}}
 @media (min-width:1024px){.lg\:grid-cols-\[320px_minmax\(0\2c 1fr\)\]{grid-template-columns:320px minmax(0,1fr)}}
+/* ツール固有の部品 */
+.input[type=number]{width:72px;font-variant-numeric:tabular-nums}
+.join>.btn.is-active{position:relative;z-index:1}
+.badge-outline{display:inline-flex;align-items:center;gap:5px;font-size:11px;line-height:1.6;font-weight:500;font-family:var(--font-mono);border:1px solid var(--line);border-radius:4px;padding:0 6px;color:var(--muted);background:var(--panel)}
+.toggle{appearance:none;-webkit-appearance:none;width:32px;height:18px;border-radius:999px;background:var(--line);position:relative;cursor:pointer;flex:none;margin:0;transition:background .12s}
+.toggle::before{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:999px;background:var(--panel);transition:transform .12s;box-shadow:0 1px 2px rgb(0 0 0 / .25)}
+.toggle:checked{background:var(--accent)}
+.toggle:checked::before{transform:translateX(14px)}
+.toggle:disabled{opacity:.4;cursor:not-allowed}
+.side-sec+.side-sec{border-top:1px solid var(--line)}
+.json{font:400 12px/1.5 var(--font-mono);background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:6px;width:100%;resize:vertical;padding:10px 11px;white-space:pre;overflow:auto;tab-size:2}
 </style>
-<style>
-  /* Layout: 左に操作サイドバー、右にシート（主役）＋下段に再生とJSON。スマホでは縦積み。 */
-  :root {
-    --bg: #eceef3; --surface: #f8f9fb; --surface-2: #e2e6ee; --line: #cdd2de;
-    --fg: #1b2030; --muted: #5a6277; --accent: #2f4fd6; --accent-fg: #ffffff; --accent-soft: #dde3fb;
-    --amber: #c97f00; --danger: #b42318; --checker-a: #dadde5; --checker-b: #c3c8d4;
-    --font-display: "DotGothic16", "IBM Plex Sans JP", system-ui, sans-serif;
-    --font-body: "IBM Plex Sans JP", "Hiragino Sans", "Yu Gothic UI", system-ui, sans-serif;
-    --font-mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) {
-      --bg: #11131a; --surface: #191c26; --surface-2: #232736; --line: #2f3447;
-      --fg: #e4e7f0; --muted: #969db3; --accent: #8fa2ff; --accent-fg: #0f1430; --accent-soft: #232b55;
-      --amber: #f0b23a; --danger: #ff8a7a; --checker-a: #2a2e3b; --checker-b: #343949;
-      color-scheme: dark;
-    }
-  }
-  :root[data-theme="dark"] {
-    --bg: #11131a; --surface: #191c26; --surface-2: #232736; --line: #2f3447;
-    --fg: #e4e7f0; --muted: #969db3; --accent: #8fa2ff; --accent-fg: #0f1430; --accent-soft: #232b55;
-    --amber: #f0b23a; --danger: #ff8a7a; --checker-a: #2a2e3b; --checker-b: #343949;
-    color-scheme: dark;
-  }
-  body { background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 14px; line-height: 1.55; }
-  .wrap { padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 16px 32px; }
-
-  /* daisyUI 互換のコンポーネントクラス（必要分のみインライン） */
-  .btn { display: inline-flex; align-items: center; justify-content: center; gap: .4rem; height: 2.25rem; padding: 0 .9rem;
-    border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--fg);
-    font: 600 .8125rem/1 var(--font-body); cursor: pointer; white-space: nowrap; transition: background .12s, border-color .12s; }
-  .btn:hover { background: var(--surface-2); }
-  .btn:focus-visible, .select:focus-visible, .input:focus-visible, .toggle:focus-visible, .range:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-  .btn-primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
-  .btn-primary:hover { background: var(--accent); filter: brightness(1.08); }
-  .btn-sm { height: 1.875rem; padding: 0 .65rem; font-size: .75rem; }
-  .btn:disabled { opacity: .45; cursor: not-allowed; }
-  .btn.is-active { background: var(--accent-soft); border-color: var(--accent); color: var(--fg); }
-  .join { display: inline-flex; flex-wrap: wrap; }
-  .join > .btn { border-radius: 0; margin-left: -1px; }
-  .join > .btn:first-child { border-radius: 6px 0 0 6px; margin-left: 0; }
-  .join > .btn:last-child { border-radius: 0 6px 6px 0; }
-  .join > .btn.is-active { position: relative; z-index: 1; }
-  .select, .input { height: 2rem; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--fg);
-    padding: 0 .5rem; font: 400 .8125rem var(--font-body); min-width: 0; }
-  .input { font-family: var(--font-mono); font-variant-numeric: tabular-nums; width: 4.5rem; }
-  .range { width: 100%; accent-color: var(--accent); }
-  .toggle { appearance: none; -webkit-appearance: none; width: 2rem; height: 1.125rem; border-radius: 999px; background: var(--line);
-    position: relative; cursor: pointer; flex: none; transition: background .12s; }
-  .toggle::before { content: ""; position: absolute; top: 2px; left: 2px; width: calc(1.125rem - 4px); height: calc(1.125rem - 4px);
-    border-radius: 999px; background: var(--surface); transition: transform .12s; box-shadow: 0 1px 2px rgb(0 0 0 / .25); }
-  .toggle:checked { background: var(--accent); }
-  .toggle:checked::before { transform: translateX(.875rem); }
-  .toggle:disabled { opacity: .4; cursor: not-allowed; }
-  .badge { display: inline-flex; align-items: center; gap: .3rem; padding: 1px 6px; border: 1px solid var(--line); border-radius: 4px;
-    font: 500 11px/1.6 var(--font-mono); color: var(--muted); background: var(--surface); }
-
-  .label { font: 600 11px/1 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
-  .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
-  .side-sec + .side-sec { border-top: 1px solid var(--line); }
-  .num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
-  .checker { background-color: var(--checker-a);
-    background-image: conic-gradient(var(--checker-b) 25%, transparent 0 50%, var(--checker-b) 0 75%, transparent 0);
-    background-size: 16px 16px; }
-  canvas.pixel { image-rendering: pixelated; image-rendering: crisp-edges; display: block; }
-  .drop-active { outline: 2px dashed var(--accent); outline-offset: -6px; }
-  .title { font-family: var(--font-display); letter-spacing: .02em; text-wrap: balance; }
-  .json { font: 400 12px/1.5 var(--font-mono); background: var(--bg); color: var(--fg); border: 1px solid var(--line);
-    border-radius: 6px; width: 100%; resize: vertical; padding: .6rem .7rem; white-space: pre; overflow: auto; tab-size: 2; }
-  .text-amber { color: var(--amber); } .text-danger { color: var(--danger); }
-  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
-</style>
-
-<div id="app" class="wrap mx-auto max-w-[1400px]">
-  <header class="flex flex-wrap items-end justify-between gap-3 pb-4">
+</head>
+<body>
+<div id="app" class="wrap">
+  <!-- common:begin header -->
+  <header class="app-header">
     <div class="min-w-0">
-      <h1 class="title text-2xl sm:text-3xl leading-tight">Aseprite シート変換</h1>
-      <p class="text-muted text-sm mt-1">.ase / .aseprite を読み込み、スプライトシートPNGとAseprite互換JSONに書き出します。処理はすべてこのブラウザ内で行われます。</p>
+      <a class="back" href="../index.html">← ツール一覧</a>
+      <h1 class="text-xl font-bold">Aseprite シート変換</h1>
+      <p class="hint">.ase / .aseprite を読み込み、スプライトシートPNGとAseprite互換JSONに書き出します。処理はすべてブラウザ内で完結します。</p>
     </div>
-    <div class="flex flex-wrap items-center justify-end gap-2">
-      <span id="sample-note" class="text-muted text-[12px]"></span>
+    <div class="actions">
+      <!-- ツール固有のヘッダーボタンはここに追加 -->
+      <span id="sample-note" class="hint"></span>
       <button id="load-sample" class="btn" type="button">サンプルを読み込む</button>
-      <label class="btn btn-primary" for="file-input">
-        <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M7 1h2v8.6l2.8-2.8 1.4 1.4L8 13.4 2.8 8.2l1.4-1.4L7 9.6zM2 13h12v2H2z" transform="rotate(180 8 8)"/></svg>
-        ファイルを開く
-      </label>
-      <input id="file-input" type="file" accept=".ase,.aseprite" class="sr-only">
+      <button id="reset-settings" class="btn btn-ghost" type="button">設定をリセット</button>
+      <button class="btn btn-ghost" type="button" id="themeToggle">テーマ: 自動</button>
     </div>
   </header>
+  <!-- common:end header -->
 
   <div class="grid gap-4 lg:grid-cols-[320px_minmax(0,1fr)] items-start">
     <!-- サイドバー -->
     <aside class="panel min-w-0">
       <section class="side-sec p-4">
         <div class="flex items-center justify-between gap-2">
-          <span class="label">ファイル</span>
+          <span class="sec-title">ファイル</span>
           <span id="sample-badge" class="badge" hidden>サンプル</span>
         </div>
+        <label class="drop mt-2" id="drop" for="file-input">
+          <span class="text-sm">.ase / .aseprite をドロップ、またはクリックして選択</span><br>
+          <span class="hint">ページのどこにドロップしても受け付けます</span>
+        </label>
+        <input id="file-input" type="file" accept=".ase,.aseprite" class="sr-only">
         <div id="file-name" class="mt-2 font-semibold break-all">—</div>
         <dl id="file-info" class="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-[13px]"></dl>
         <div id="tag-list" class="mt-3 flex flex-wrap gap-1.5"></div>
-        <div id="warnings" class="mt-3 text-[12px] text-danger" hidden></div>
+        <div id="warnings" class="mt-3 text-[12px] danger" hidden></div>
       </section>
 
       <section class="side-sec p-4">
         <div class="flex items-center justify-between gap-2">
-          <span class="label">レイヤー</span>
+          <span class="sec-title">レイヤー</span>
           <button id="layers-reset" class="btn btn-sm" type="button">ファイルの表示状態に戻す</button>
         </div>
         <ul id="layer-list" class="mt-3 flex flex-col gap-1"></ul>
@@ -220,7 +197,7 @@ img,video{max-width:100%;height:auto}
       </section>
 
       <section class="side-sec p-4 flex flex-col gap-3">
-        <span class="label">分割と切り詰め</span>
+        <span class="sec-title">分割と切り詰め</span>
         <label class="flex items-center justify-between gap-3 text-[13px]" for="split-on">キャンバスをセルに分割する
           <input id="split-on" class="toggle" type="checkbox"></label>
         <div id="split-row" class="flex flex-col gap-2">
@@ -239,11 +216,11 @@ img,video{max-width:100%;height:auto}
         </div>
         <label class="flex items-center justify-between gap-3 text-[13px]" for="skip-empty">空のスプライトを除外する
           <input id="skip-empty" class="toggle" type="checkbox" checked></label>
-        <div id="trim-summary" class="rounded-md bg-bg border border-line px-3 py-2 text-[12px] num flex flex-col gap-0.5"></div>
+        <div id="trim-summary" class="rounded-md bg-bg border px-3 py-2 text-[12px] num flex flex-col gap-0.5"></div>
       </section>
 
       <section class="side-sec p-4 flex flex-col gap-4">
-        <span class="label">レイアウト</span>
+        <span class="sec-title">レイアウト</span>
         <div class="join" role="group" aria-label="配置">
           <button class="btn btn-sm" data-layout="h" type="button">横一列</button>
           <button class="btn btn-sm" data-layout="v" type="button">縦一列</button>
@@ -269,7 +246,7 @@ img,video{max-width:100%;height:auto}
       </section>
 
       <section class="side-sec p-4 flex flex-col gap-3">
-        <span class="label">書き出し</span>
+        <span class="sec-title">書き出し</span>
         <label class="flex items-center justify-between gap-3 text-[13px]" for="json-format">JSON形式
           <select id="json-format" class="select">
             <option value="hash">Hash（frames がオブジェクト）</option>
@@ -291,7 +268,7 @@ img,video{max-width:100%;height:auto}
       <section id="sheet-panel" class="panel p-4 min-w-0">
         <div class="flex flex-wrap items-center justify-between gap-3">
           <div class="flex items-baseline gap-3 min-w-0">
-            <span class="label">スプライトシート</span>
+            <span class="sec-title">スプライトシート</span>
             <span id="sheet-size" class="num text-[13px] text-muted"></span>
           </div>
           <div class="flex flex-wrap items-center gap-3">
@@ -304,30 +281,30 @@ img,video{max-width:100%;height:auto}
             </div>
           </div>
         </div>
-        <div id="sheet-scroll" class="mt-3 overflow-auto rounded-md border border-line max-h-[60vh] min-h-[160px] bg-bg">
-          <div id="sheet-holder" class="checker inline-block align-top"><canvas id="sheet-view" class="pixel"></canvas></div>
+        <div id="sheet-scroll" class="mt-3 overflow-auto rounded-md border max-h-[60vh] min-h-[160px] bg-bg">
+          <div id="sheet-holder" class="bg-checker inline-block align-top"><canvas id="sheet-view" class="pixel"></canvas></div>
         </div>
-        <p class="text-[11px] text-muted mt-2">ファイルはこの欄へドラッグ&ドロップでも開けます。枠と番号は確認用の表示で、書き出すPNGには含まれません。</p>
+        <p class="text-[11px] text-muted mt-2">ファイルはページのどこにドロップしても開けます。枠と番号は確認用の表示で、書き出すPNGには含まれません。</p>
       </section>
 
       <div class="grid gap-4 md:grid-cols-[minmax(0,320px)_minmax(0,1fr)]">
         <section class="panel p-4 min-w-0">
           <div class="flex items-center justify-between gap-2">
-            <span class="label">アニメーション</span>
+            <span class="sec-title">アニメーション</span>
             <span id="anim-frame" class="num text-[12px] text-muted"></span>
           </div>
-          <div class="mt-3 checker rounded-md border border-line grid place-items-center aspect-square max-w-full overflow-hidden">
+          <div class="mt-3 bg-checker rounded-md border grid place-items-center aspect-square max-w-full overflow-hidden">
             <canvas id="anim-view" class="pixel"></canvas>
           </div>
           <div class="mt-3 flex flex-wrap items-center gap-2">
-            <button id="anim-play" class="btn btn-sm" type="button" aria-pressed="true">一時停止</button>
+            <button id="anim-play" class="btn btn-sm" type="button">一時停止</button>
             <select id="anim-cell" class="select" aria-label="再生するセル"></select>
             <select id="anim-tag" class="select flex-1" aria-label="再生する範囲"></select>
           </div>
         </section>
         <section class="panel p-4 min-w-0 flex flex-col">
           <div class="flex items-center justify-between gap-2">
-            <span class="label">JSON プレビュー</span>
+            <span class="sec-title">JSON プレビュー</span>
             <span id="json-size" class="num text-[12px] text-muted"></span>
           </div>
           <textarea id="json-out" class="json mt-3 flex-1 min-h-[260px]" readonly spellcheck="false" aria-label="JSON出力"></textarea>
@@ -692,29 +669,206 @@ const AseParser = (() => {
 })();
 
 </script>
+
+<!-- common:begin toast -->
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<!-- common:end toast -->
+
+<!-- common:begin common-js -->
+<script>
+/* 共通 JS。各ツールはこのブロックをそのままコピーし、下の「ツール固有」スクリプトから IT.* を使う */
+const IT = (() => {
+  const PREFIX = "imagetools:";
+
+  // ---- localStorage の安全な読み書き（プライベートモード等で例外になっても落ちない） ----
+  const store = {
+    get(key, fallback = null) {
+      try { const v = localStorage.getItem(PREFIX + key); return v === null ? fallback : JSON.parse(v); }
+      catch (e) { return fallback; }
+    },
+    set(key, value) {
+      try { localStorage.setItem(PREFIX + key, JSON.stringify(value)); return true; }
+      catch (e) { return false; }
+    },
+    remove(key) {
+      try { localStorage.removeItem(PREFIX + key); } catch (e) { /* 無視 */ }
+    },
+  };
+
+  // ---- トースト ----
+  let toastTimer = 0;
+  function toast(msg, ms = 2400) {
+    const t = document.getElementById("toast");
+    if (!t) return;
+    t.textContent = msg;
+    t.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.remove("show"), ms);
+  }
+
+  // ---- テーマ切替（自動 → ライト → ダーク の順に循環） ----
+  // theme-init は生の文字列で読むため、ここも JSON を介さず同じキーに文字列で保存する
+  const THEME_KEY = PREFIX + "theme";
+  const THEME_LABEL = { auto: "テーマ: 自動", light: "テーマ: ライト", dark: "テーマ: ダーク" };
+  function getTheme() {
+    const t = document.documentElement.dataset.theme;
+    return t === "light" || t === "dark" ? t : "auto";
+  }
+  function applyTheme(theme) {
+    const root = document.documentElement;
+    if (theme === "light" || theme === "dark") root.dataset.theme = theme;
+    else delete root.dataset.theme;
+    try {
+      if (theme === "auto") localStorage.removeItem(THEME_KEY);
+      else localStorage.setItem(THEME_KEY, theme);
+    } catch (e) { /* 保存できなくても切替自体は有効 */ }
+    const btn = document.getElementById("themeToggle");
+    if (btn) btn.textContent = THEME_LABEL[getTheme()];
+  }
+  function initThemeToggle() {
+    const btn = document.getElementById("themeToggle");
+    if (!btn) return;
+    btn.textContent = THEME_LABEL[getTheme()];
+    btn.addEventListener("click", () => {
+      const next = { auto: "light", light: "dark", dark: "auto" }[getTheme()];
+      applyTheme(next);
+      toast(THEME_LABEL[next]);
+    });
+  }
+
+  // ---- ファイル保存（Claude アーティファクトでは downloads、通常ブラウザでは <a download>） ----
+  // "anchor" = 通常ブラウザ / null = アーティファクト内だが downloads が使えない / それ以外 = downloads ハンドル
+  let downloadsP = null;
+  function getDownloads() {
+    if (!downloadsP) {
+      downloadsP = (window.claude && typeof window.claude.use === "function")
+        ? Promise.resolve().then(() => window.claude.use("downloads")).then((d) => d || null, () => null)
+        : Promise.resolve("anchor");
+    }
+    return downloadsP;
+  }
+  getDownloads();
+  const SAVE_ERRORS = { declined: "保存をキャンセルしました", rate_limited: "保存が続いたため一時的に制限されています。少し待ってからお試しください" };
+  async function saveFile(filename, data) {
+    const dl = await getDownloads();
+    if (dl === "anchor") {
+      const blob = data instanceof Blob ? data : new Blob([data]);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = filename;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 4000);
+      toast(filename + " を保存しました");
+      return true;
+    }
+    if (!dl) { toast("この表示ではファイルを保存できません"); return false; }
+    try {
+      const res = await dl.save({ filename, data });
+      const ok = !res || res.status === undefined || res.status === "saved";
+      if (ok) toast(filename + " を保存しました");
+      return ok;
+    } catch (e) {
+      const code = (e && e.code) || "error";
+      toast(SAVE_ERRORS[code] || "保存できませんでした（" + code + "）");
+      return false;
+    }
+  }
+  function canvasToBlob(canvas, type = "image/png") {
+    return new Promise((res, rej) => canvas.toBlob((b) => (b ? res(b) : rej(new Error("toBlob failed"))), type));
+  }
+
+  // ---- ドラッグ&ドロップ受付（ページ全体で受け、zone に .over を付ける） ----
+  // accept: ファイルを絞る関数（省略時はすべて）。onFiles には絞り込み後の File[] を渡す
+  function initDrop({ zone, input, accept = () => true, onFiles, emptyMessage = "対応するファイルが見つかりませんでした" }) {
+    const zoneEl = typeof zone === "string" ? document.getElementById(zone) : zone;
+    const inputEl = typeof input === "string" ? document.getElementById(input) : input;
+    const handle = (list) => {
+      const files = [...(list || [])].filter(accept);
+      if (!files.length) { toast(emptyMessage); return; }
+      onFiles(files);
+    };
+    let depth = 0;
+    const hasFiles = (e) => !!e.dataTransfer && [...e.dataTransfer.types].includes("Files");
+    document.addEventListener("dragenter", (e) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault(); depth++; zoneEl && zoneEl.classList.add("over");
+    });
+    document.addEventListener("dragover", (e) => { if (hasFiles(e)) e.preventDefault(); });
+    document.addEventListener("dragleave", (e) => {
+      if (!hasFiles(e)) return;
+      depth = Math.max(0, depth - 1);
+      if (!depth && zoneEl) zoneEl.classList.remove("over");
+    });
+    document.addEventListener("drop", (e) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault(); depth = 0; zoneEl && zoneEl.classList.remove("over");
+      handle(e.dataTransfer.files);
+    });
+    if (inputEl) inputEl.addEventListener("change", (e) => { handle(e.target.files); e.target.value = ""; });
+  }
+
+  initThemeToggle();
+  // 別タブでテーマを変えたら追従する（保存はし直さない）
+  window.addEventListener("storage", (e) => {
+    if (e.key !== THEME_KEY) return;
+    const t = e.newValue === "light" || e.newValue === "dark" ? e.newValue : null;
+    if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme;
+    const btn = document.getElementById("themeToggle");
+    if (btn) btn.textContent = THEME_LABEL[getTheme()];
+  });
+  return { store, toast, saveFile, canvasToBlob, initDrop, applyTheme, getTheme };
+})();
+</script>
+<!-- common:end common-js -->
+
 <script>
 (() => {
   const SAMPLE_URL = "../samples/aseprite/slime.aseprite";
   const $ = (id) => document.getElementById(id);
+  // ---------- settings (localStorage に保存して次回起動時に復元) ----------
+  // 分割（split / セルサイズ）はファイルごとに決まるので保存しない
+  const SETTINGS_KEY = "aseprite-sheet-converter:settings";
+  const DEFAULTS = { layout: "h", cols: 4, scale: 1, border: 0, spacing: 0, json: "hash", grid: true, zoom: "fit",
+    trim: true, trimPad: 0, skipEmpty: true };
+  const intIn = (min, max) => (v) => Number.isInteger(v) && v >= min && v <= max;
+  const isBool = (v) => typeof v === "boolean";
+  const VALID = {
+    layout: (v) => ["h", "v", "grid", "rows"].includes(v), cols: intIn(1, 16), scale: intIn(1, 8),
+    border: intIn(0, 64), spacing: intIn(0, 64), json: (v) => v === "hash" || v === "array", grid: isBool,
+    zoom: (v) => ["fit", 1, 2, 4].includes(v), trim: isBool, trimPad: intIn(0, 64), skipEmpty: isBool,
+  };
+  function loadSettings() {
+    const saved = IT.store.get(SETTINGS_KEY, null);
+    const out = {};
+    if (saved && typeof saved === "object") for (const k in VALID) if (k in saved && VALID[k](saved[k])) out[k] = saved[k];
+    return out;
+  }
+  const savedSettings = loadSettings();
+
   const state = {
     doc: null, title: "sprite", ext: "aseprite", isSample: false,
     enabled: [], frames: [], sheet: document.createElement("canvas"),
-    opts: { layout: "h", cols: 4, scale: 1, border: 0, spacing: 0, json: "hash", grid: true, zoom: "fit",
-      split: false, cellW: 1, cellH: 1, trim: true, trimPad: 0, skipEmpty: true },
+    opts: { ...DEFAULTS, ...savedSettings, split: false, cellW: 1, cellH: 1 },
+    // ユーザーが変えた設定だけを保存する（サンプル読み込みで一時的に変わった値は保存しない）
+    userSettings: { ...savedSettings },
     frameData: [], cut: null, L: null,
     anim: { playing: !matchMedia("(prefers-reduced-motion: reduce)").matches, seq: [], pos: 0, timer: 0 },
-    downloads: undefined,
   };
+  function saveSetting(key) {
+    state.userSettings[key] = state.opts[key];
+    IT.store.set(SETTINGS_KEY, state.userSettings);
+  }
 
   // ---------- file loading ----------
   async function loadBuffer(buf, name, isSample) {
     try {
+      if (buf instanceof Blob) buf = await buf.arrayBuffer();
       const doc = await AseParser.parse(buf);
       state.doc = doc; state.isSample = isSample;
       const m = /^(.*?)(?:\.(ase|aseprite))?$/i.exec(name);
       state.title = m[1] || "sprite"; state.ext = (m[2] || "aseprite").toLowerCase();
       state.enabled = doc.layers.map((l) => l.visible);
-      state.opts.cols = Math.min(Math.max(1, Math.ceil(Math.sqrt(doc.frames.length))), 16);
+      if (!("cols" in state.userSettings)) state.opts.cols = Math.min(Math.max(1, Math.ceil(Math.sqrt(doc.frames.length))), 16);
       $("cols").value = state.opts.cols; $("cols-val").textContent = state.opts.cols;
       // セルサイズは読み込みごとにキャンバス全体へ戻す（サンプルだけは分割の例として 32×32 にする）
       Object.assign(state.opts, isSample
@@ -727,6 +881,7 @@ const AseParser = (() => {
       setNote("");
     } catch (e) {
       setNote(name + " を読み込めませんでした: " + e.message, true);
+      IT.toast(name + " を読み込めませんでした");
     }
   }
   // サンプルは samples/ から fetch する（file:// では fetch できないためボタンを無効化）
@@ -745,19 +900,12 @@ const AseParser = (() => {
       $("sample-note").textContent = "サンプルを読み込めませんでした（" + e.message + "）";
     }
   });
-  async function openFile(file) {
-    if (!file) return;
-    if (!/\.(ase|aseprite)$/i.test(file.name)) { setNote(file.name + " は .ase / .aseprite ファイルではありません。", true); return; }
-    loadBuffer(await file.arrayBuffer(), file.name, false);
-  }
-  $("file-input").addEventListener("change", (e) => { openFile(e.target.files[0]); e.target.value = ""; });
-  let dragDepth = 0;
-  document.addEventListener("dragenter", (e) => { e.preventDefault(); dragDepth++; $("sheet-panel").classList.add("drop-active"); });
-  document.addEventListener("dragleave", () => { if (--dragDepth <= 0) { dragDepth = 0; $("sheet-panel").classList.remove("drop-active"); } });
-  document.addEventListener("dragover", (e) => e.preventDefault());
-  document.addEventListener("drop", (e) => {
-    e.preventDefault(); dragDepth = 0; $("sheet-panel").classList.remove("drop-active");
-    openFile(e.dataTransfer && e.dataTransfer.files[0]);
+  IT.initDrop({
+    zone: "drop",
+    input: "file-input",
+    accept: (f) => /\.(ase|aseprite)$/i.test(f.name),
+    onFiles: (files) => loadBuffer(files[0], files[0].name, false),
+    emptyMessage: ".ase / .aseprite ファイルが見つかりませんでした",
   });
 
   // ---------- info / layers ----------
@@ -778,7 +926,7 @@ const AseParser = (() => {
     for (const [k, v] of rows) { dl.append(el("dt", "text-muted", k), el("dd", "num min-w-0 break-words", v)); }
     const tl = $("tag-list"); tl.replaceChildren();
     for (const t of d.tags) {
-      const b = el("span", "badge");
+      const b = el("span", "badge-outline");
       const dot = el("span"); dot.style.cssText = "width:8px;height:8px;border-radius:2px;background:" + t.color.slice(0, 7);
       b.append(dot, document.createTextNode(t.name + " " + t.from + "–" + t.to + " " + dirLabel(t.direction)));
       tl.append(b);
@@ -806,7 +954,7 @@ const AseParser = (() => {
       if (L.reference) meta.push("参照");
       if (L.type !== 1 && L.blendMode) meta.push(AseParser.BLEND_NAMES[L.blendMode] || "?");
       if (L.type !== 1 && L.opacity < 255) meta.push(Math.round(L.opacity / 2.55) + "%");
-      if (meta.length) li.append(el("span", "badge shrink-0", meta.join(" · ")));
+      if (meta.length) li.append(el("span", "badge-outline shrink-0", meta.join(" · ")));
       li.dataset.index = i;
       ul.append(li);
     }
@@ -887,7 +1035,7 @@ const AseParser = (() => {
     if (C.remX) rem.push("右端 " + C.remX + " px");
     if (C.remY) rem.push("下端 " + C.remY + " px");
     if (rem.length) line(rem.join("・") + " はセルに収まらないため使われません。", "text-amber");
-    if (!C.sprites.length) line("書き出すスプライトがありません。レイヤーの表示か分割の設定を確認してください。", "text-danger");
+    if (!C.sprites.length) line("書き出すスプライトがありません。レイヤーの表示か分割の設定を確認してください。", "danger");
     $("split-row").hidden = !o.split;
     $("trim-row").hidden = !o.trim;
   }
@@ -1075,7 +1223,7 @@ const AseParser = (() => {
       Math.max(16, state.doc.frames[fi].duration || 100));
   }
   function syncPlayBtn() {
-    const b = $("anim-play"); b.textContent = state.anim.playing ? "一時停止" : "再生"; b.setAttribute("aria-pressed", String(state.anim.playing));
+    const b = $("anim-play"); b.textContent = state.anim.playing ? "一時停止" : "再生";
   }
   $("anim-play").addEventListener("click", () => { state.anim.playing = !state.anim.playing; syncPlayBtn(); tick(); });
   $("anim-tag").addEventListener("change", () => { buildSeq(); tick(); });
@@ -1095,6 +1243,21 @@ const AseParser = (() => {
     $("cols-row").hidden = state.opts.layout !== "grid";
     $("rows-note").hidden = state.opts.layout !== "rows";
   }
+  // 保存対象の設定を画面の入力欄・ボタンに反映する（起動時とリセット時）
+  function syncSettingInputs() {
+    const o = state.opts;
+    $("cols").value = o.cols; $("cols-val").textContent = o.cols;
+    $("scale").value = o.scale; $("scale-val").textContent = o.scale + "×";
+    $("border").value = o.border; $("spacing").value = o.spacing;
+    $("json-format").value = o.json; $("show-grid").checked = o.grid;
+    $("trim-on").checked = o.trim; $("trim-pad").value = o.trimPad; $("skip-empty").checked = o.skipEmpty;
+    document.querySelectorAll("[data-layout]").forEach((b) => b.classList.toggle("is-active", b.dataset.layout === o.layout));
+    document.querySelectorAll("[data-zoom]").forEach((b) => b.classList.toggle("is-active", b.dataset.zoom === String(o.zoom)));
+    $("cols-row").hidden = o.layout !== "grid";
+    $("rows-note").hidden = o.layout !== "rows";
+    $("split-row").hidden = !o.split;
+    $("trim-row").hidden = !o.trim;
+  }
   function syncCutInputs() {
     const o = state.opts;
     $("split-on").checked = o.split; $("cell-w").value = o.cellW; $("cell-h").value = o.cellH;
@@ -1108,63 +1271,56 @@ const AseParser = (() => {
     state.opts[key] = v; clearTimeout(cutT); cutT = setTimeout(recut, 150);
   });
   cellInput("cell-w", "cellW"); cellInput("cell-h", "cellH");
-  $("trim-on").addEventListener("change", (e) => { state.opts.trim = e.target.checked; recut(); });
-  $("trim-pad").addEventListener("input", (e) => { state.opts.trimPad = Math.max(0, Math.min(64, parseInt(e.target.value, 10) || 0)); recut(); });
-  $("skip-empty").addEventListener("change", (e) => { state.opts.skipEmpty = e.target.checked; recut(); });
-  document.querySelectorAll("[data-layout]").forEach((b) => b.addEventListener("click", () => { state.opts.layout = b.dataset.layout; relayout(); }));
-  document.querySelectorAll("[data-zoom]").forEach((b) => b.addEventListener("click", () => { state.opts.zoom = b.dataset.zoom === "fit" ? "fit" : +b.dataset.zoom; drawView(); }));
-  $("cols").addEventListener("input", (e) => { state.opts.cols = +e.target.value; $("cols-val").textContent = e.target.value; relayout(); });
-  $("scale").addEventListener("input", (e) => { state.opts.scale = +e.target.value; $("scale-val").textContent = e.target.value + "×"; relayout(); });
+  $("trim-on").addEventListener("change", (e) => { state.opts.trim = e.target.checked; saveSetting("trim"); recut(); });
+  $("trim-pad").addEventListener("input", (e) => { state.opts.trimPad = Math.max(0, Math.min(64, parseInt(e.target.value, 10) || 0)); saveSetting("trimPad"); recut(); });
+  $("skip-empty").addEventListener("change", (e) => { state.opts.skipEmpty = e.target.checked; saveSetting("skipEmpty"); recut(); });
+  document.querySelectorAll("[data-layout]").forEach((b) => b.addEventListener("click", () => {
+    state.opts.layout = b.dataset.layout; saveSetting("layout"); syncSettingInputs(); relayout();
+  }));
+  document.querySelectorAll("[data-zoom]").forEach((b) => b.addEventListener("click", () => {
+    state.opts.zoom = b.dataset.zoom === "fit" ? "fit" : +b.dataset.zoom; saveSetting("zoom"); syncSettingInputs(); drawView();
+  }));
+  $("cols").addEventListener("input", (e) => {
+    state.opts.cols = +e.target.value; $("cols-val").textContent = e.target.value; saveSetting("cols"); relayout();
+  });
+  $("scale").addEventListener("input", (e) => { state.opts.scale = +e.target.value; $("scale-val").textContent = e.target.value + "×"; saveSetting("scale"); relayout(); });
   const intInput = (id, key) => $(id).addEventListener("input", (e) => {
-    const v = Math.max(0, Math.min(64, parseInt(e.target.value, 10) || 0)); state.opts[key] = v; relayout();
+    const v = Math.max(0, Math.min(64, parseInt(e.target.value, 10) || 0)); state.opts[key] = v; saveSetting(key); relayout();
   });
   intInput("border", "border"); intInput("spacing", "spacing");
-  $("json-format").addEventListener("change", (e) => { state.opts.json = e.target.value; renderJSON(); });
-  $("show-grid").addEventListener("change", (e) => { state.opts.grid = e.target.checked; drawView(); });
+  $("json-format").addEventListener("change", (e) => { state.opts.json = e.target.value; saveSetting("json"); if (state.doc) renderJSON(); });
+  $("show-grid").addEventListener("change", (e) => { state.opts.grid = e.target.checked; saveSetting("grid"); drawView(); });
+  $("reset-settings").addEventListener("click", () => {
+    IT.store.remove(SETTINGS_KEY);
+    Object.assign(state.opts, DEFAULTS);
+    state.userSettings = {};
+    if (state.doc) state.opts.cols = Math.min(Math.max(1, Math.ceil(Math.sqrt(state.doc.frames.length))), 16);
+    syncSettingInputs(); recut();
+    IT.toast("設定をリセットしました");
+  });
   let rz; addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => { drawView(); drawAnimFrame(); }, 120); });
 
   // ---------- saving ----------
   function setNote(msg, isErr) { const n = $("save-note"); n.textContent = msg; n.style.color = isErr ? "var(--danger)" : ""; }
-  async function getDownloads() {
-    if (state.downloads !== undefined) return state.downloads;
-    if (!window.claude || typeof window.claude.use !== "function") return (state.downloads = "anchor");
-    try { state.downloads = (await window.claude.use("downloads")) || null; } catch { state.downloads = null; }
-    return state.downloads;
-  }
-  async function saveFile(filename, data) {
-    const dl = await getDownloads();
-    if (dl === "anchor") {
-      const blob = data instanceof Blob ? data : new Blob([data]);
-      const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = filename;
-      document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
-      setNote(filename + " を保存しました。"); return;
-    }
-    if (!dl) { setNote("この表示ではファイル保存が使えません。シート画像を右クリックして保存するか、JSONはコピーをご利用ください。", true); return; }
-    try {
-      const res = await dl.save({ filename, data });
-      if (res && res.status === "saved") setNote(filename + " を保存しました。");
-    } catch (e) {
-      const code = e && e.code;
-      if (code === "declined") setNote("保存をキャンセルしました。");
-      else if (code === "rate_limited") setNote("保存の確認画面がすでに開いています。少し待ってから再度お試しください。", true);
-      else setNote("保存できませんでした（" + (code || "unknown") + "）。", true);
-    }
-  }
-  $("save-png").addEventListener("click", () => {
+  $("save-png").addEventListener("click", async () => {
     if (!state.doc) return;
-    state.sheet.toBlob((blob) => blob && saveFile(outBase() + ".png", blob), "image/png");
+    try { await IT.saveFile(outBase() + ".png", await IT.canvasToBlob(state.sheet)); }
+    catch (e) { IT.toast("PNGを作成できませんでした"); }
   });
-  $("save-json").addEventListener("click", () => { if (state.doc) saveFile(outBase() + ".json", jsonText()); });
+  $("save-json").addEventListener("click", () => {
+    if (state.doc) IT.saveFile(outBase() + ".json", new Blob([jsonText()], { type: "application/json" }));
+  });
   $("copy-json").addEventListener("click", async () => {
     if (!state.doc) return;
     const t = jsonText();
-    try { await navigator.clipboard.writeText(t); setNote("JSONをクリップボードにコピーしました。"); }
-    catch { const ta = $("json-out"); ta.focus(); ta.select(); setNote("自動コピーできなかったため、JSONを選択状態にしました。Ctrl+C でコピーしてください。"); }
+    try { await navigator.clipboard.writeText(t); IT.toast("JSONをクリップボードにコピーしました"); }
+    catch { const ta = $("json-out"); ta.focus(); ta.select(); IT.toast("自動コピーできなかったため、JSONを選択状態にしました。Ctrl+C でコピーしてください", 4000); }
   });
 
   // ---------- boot ----------
+  syncSettingInputs();
   syncPlayBtn();
 })();
 </script>
-
-</body></html>
+</body>
+</html>
