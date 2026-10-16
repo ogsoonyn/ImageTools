@@ -7,3 +7,6 @@
 *.webp binary
 *.ase binary
 *.aseprite binary
+*.ico binary
+*.bmp binary
+*.zip binary
