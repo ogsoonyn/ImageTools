@@ -11,7 +11,7 @@
 | ツール | 用途 | 入力 | 出力 | ファイル |
 | --- | --- | --- | --- | --- |
 | Aseprite シート変換 | Aseprite のファイルをスプライトシートに書き出す。レイヤーの表示切替、キャンバスのセル分割、余白の切り詰め、並べ方(横一列・縦一列・グリッド・セルごとに行)を指定できる | `.ase` / `.aseprite` | スプライトシート PNG + Aseprite 互換 JSON | [`tools/aseprite-sheet-converter.html`](tools/aseprite-sheet-converter.html) |
-| Keyout Sprite Packer | キーカラー(マゼンタなど)を透過に変換し、連番画像を1枚のスプライトシートにまとめる。輝度をアルファに変える透過モードや、加算合成素材向けの色の扱いも選べる。1枚のシートを渡せば透過処理だけを行う | 連番 PNG / BMP、または既存のシート画像 | 透過済みスプライトシート PNG + JSON | [`tools/keyout-sprite-packer.html`](tools/keyout-sprite-packer.html) |
+| Keyout Sprite Packer | キーカラー(マゼンタなど)を透過に変換し、連番画像を1枚のスプライトシートにまとめる。輝度をアルファに変える透過モードや、加算合成素材向けの色の扱いも選べる。1枚のシートを渡せば透過処理だけを行う | 連番 PNG / BMP、または既存のシート画像 | 透過済みスプライトシート PNG + JSON(独自形式、または Aseprite 互換の Hash / Array) | [`tools/keyout-sprite-packer.html`](tools/keyout-sprite-packer.html) |
 
 ### Aseprite シート変換
 
@@ -38,11 +38,13 @@
 
 ```
 ImageTools/
+├── index.html   ツール一覧ページ(GitHub Pages のトップ)
 ├── tools/       各ツールの HTML(1ツール = 1ファイル)
 ├── templates/   新規ツール用のテンプレートと共通UIの仕様
 ├── samples/     ツールで試せるサンプル素材
 ├── docs/
 │   └── images/  README 用のスクリーンショット
+├── .nojekyll    GitHub Pages で Jekyll 処理を無効にする
 ├── LICENSE
 └── README.md
 ```
