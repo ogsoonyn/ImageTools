@@ -191,3 +191,25 @@ def test_broken_stored_settings_fall_back(browser: Browser, base_url: str):
             assert errors == [], (stored, errors)
         finally:
             context.close()
+
+
+def test_file_name_has_grid_suffix(browser: Browser, base_url: str):
+    """ファイル名の末尾に _列x行 を付ける(Anim-Editor が分割数を読む形式)。"""
+    page = browser.new_context(accept_downloads=True).new_page()
+    errors: list[str] = []
+    page.on("pageerror", lambda err: errors.append(str(err)))
+    page.goto(f"{base_url}/{JIGGLE}")
+    expect(page.locator("#btnPng")).to_be_enabled(timeout=10_000)
+    try:
+        _change(page, "frames", 9)
+        _set_range(page, "cols", 3)  # 列数は並べ直すだけで再計算しない
+        expect(page.locator("#sheetSize")).to_contain_text("_jiggle_3x3.png")
+        with page.expect_download() as dl:
+            page.click("#btnPng")
+        assert dl.value.suggested_filename.endswith("_jiggle_3x3.png")
+        with page.expect_download() as dl:
+            page.click("#btnJson")
+        assert dl.value.suggested_filename.endswith("_jiggle_3x3.json")
+        assert errors == []
+    finally:
+        page.context.close()

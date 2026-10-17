@@ -191,3 +191,33 @@ def test_small_specks_inside_a_frame_are_kept(browser: Browser, base_url: str):
         assert errors == []
     finally:
         page.context.close()
+
+
+def test_file_name_has_grid_suffix(browser: Browser, base_url: str):
+    """ファイル名の末尾に _列x行 を付ける(Anim-Editor が分割数を読む形式)。格子にならないときは付けない。"""
+    page, errors = _open(browser, base_url)
+    try:
+        _load_sample(page)
+        page.fill("#baseName", "fx_3x3")  # 末尾の古い表記は付け替える
+        with page.expect_download() as dl:
+            page.click("#btnPng")
+        # 4アニメ(最長 8 コマ)を行ごと → 8 列 × 4 行
+        assert dl.value.suggested_filename == "fx_8x4.png"
+        with page.expect_download() as dl:
+            page.click("#btnJson")
+        assert dl.value.suggested_filename == "fx_8x4.json"
+        data = json.loads(open(dl.value.path(), encoding="utf-8").read())
+        assert data["meta"]["image"] == "fx_8x4.png"
+        cell = next(iter(data["frames"].values()))["frame"]
+        assert (data["meta"]["size"]["w"], data["meta"]["size"]["h"]) == (8 * cell["w"], 4 * cell["h"])
+        expect(page.locator("#pngPreview")).to_have_text("fx_8x4.png")
+        page.fill("#baseName", "walk_4x4_sheet")  # 名前の途中の表記も Anim-Editor に読まれるので消す
+        expect(page.locator("#pngPreview")).to_have_text("walk_sheet_8x4.png")
+        page.select_option("#cellMode", "group")
+        expect(page.locator("#pngPreview")).to_have_text("walk_sheet.png")
+        # 列が64を超える格子は Anim-Editor が読めないので付けない
+        wide = page.evaluate("(() => { const k = layout; layout = { W: 65 * 10, H: 10, uniform: [10, 10] }; const n = pngName(); layout = k; return n; })()")
+        assert wide == "walk_sheet.png"
+        assert errors == []
+    finally:
+        page.context.close()
