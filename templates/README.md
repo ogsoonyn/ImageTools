@@ -56,6 +56,8 @@
 | `IT.initDrop({ zone, input, accept, onFiles, emptyMessage })` | ページ全体でドロップを受け付け、ドロップ中は `zone` に `.over` を付ける。`input`(`<input type=file>`)の選択も同じ `onFiles` に流す |
 | `IT.toast(msg, ms?)` | 画面下にトーストを表示 |
 | `IT.store.get(key, fallback)` / `set(key, value)` / `remove(key)` | `localStorage` の安全な読み書き(try/catch 済み、JSON で保存)。キーには自動で `imagetools:` が付く |
+| `IT.openIn(tool, files)` | ツール間の受け渡し(送る側)。`tools/<tool>.html#handoff` を新しいタブで開き、準備できた合図が来たら `files`(`File[]`、またはその `Promise`)を `postMessage` で渡す。タブはクリックの中で開くので、画像の用意は `Promise` で渡す(待ってから開くとポップアップとして止められる)。`file://` でも動く |
+| `IT.receive(onFiles, onFail?)` | ツール間の受け渡し(受ける側)。起動時に呼ぶ。`#handoff` 付きで開かれていれば待ち受けて `true` を返し、届いた `File[]` を `onFiles`(ドロップと同じ処理を渡す)へ。届かなければ `onFail`。`true` のときはサンプルの自動読込などを省く |
 | `IT.applyTheme(theme)` / `IT.getTheme()` | テーマの変更・取得(`theme` は `auto` / `light` / `dark`)。テーマは `IT.store` ではなくこちらで扱う |
 
 ツール固有の設定を保存するときは、キーを `"<tool-name>:<設定名>"` のようにツール名で区切ってください。

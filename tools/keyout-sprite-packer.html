@@ -145,6 +145,7 @@ input[type=color]{width:36px;height:30px;border:1px solid var(--line);border-rad
     <div class="actions">
       <button class="btn btn-primary" id="btnPng" type="button">PNGを保存</button>
       <button class="btn" id="btnJson" type="button">JSONを保存</button>
+      <button class="btn" id="btnPolish" type="button" title="保存せずに、このシート（PNG と JSON）をシート仕上げツールの新しいタブで開きます">仕上げツールで開く</button>
       <button class="btn btn-ghost" type="button" id="btnResetPrefs" title="キーカラー・透過モード・列数/余白・JSON形式・FPS などの設定を初期値に戻します（出力ファイル名と分割数は対象外）">設定をリセット</button>
       <button class="btn btn-ghost" type="button" id="themeToggle">テーマ: 自動</button>
     </div>
@@ -460,6 +461,51 @@ const IT = (() => {
     if (inputEl) inputEl.addEventListener("change", (e) => { handle(e.target.files); e.target.value = ""; });
   }
 
+  // ---- ツール間の受け渡し（「○○で開く」） ----
+  // 送る側: openIn("sprite-polish", [File, ...] か その Promise) で相手のツールを新しいタブに #handoff 付きで開き、
+  //   準備できた合図が来たらファイルを postMessage で渡す（保存しなくてよい。file:// で直接開いても動く）
+  //   タブはクリックの中で先に開く（画像の用意を待ってから開くとポップアップとして止められるため）
+  // 受ける側: 起動時に receive(onFiles, onFail) を呼ぶ。#handoff 付きで開かれたときだけ待ち受けて true を返す
+  //   （そのときはサンプルの自動読込などを省く）。届かなければ onFail を呼ぶ
+  const HANDOFF = "imagetools:handoff";
+  // file:// のページどうしは origin が一致しない（ブラウザにより "file://" か "null"）ので宛先を限定できない
+  const msgOrigin = () => (location.protocol !== "file:" && location.origin && location.origin !== "null" ? location.origin : "*");
+  function openIn(tool, files) {
+    const win = window.open(tool + ".html#handoff", "_blank");
+    const filesP = Promise.resolve(files);
+    filesP.catch(() => {}); // 渡す前に失敗・タブを開けなかったときに未処理の reject を出さない
+    if (!win) { toast("新しいタブを開けませんでした（ポップアップがブロックされていないか確認してください）", 4000); return false; }
+    let timer = 0;
+    const onMsg = (e) => {
+      if (e.source !== win || !e.data || e.data.type !== HANDOFF + "-ready") return;
+      done();
+      filesP.then((files) => win.postMessage({ type: HANDOFF, files }, msgOrigin()), () => toast("渡すデータを作れませんでした"));
+    };
+    const done = () => { window.removeEventListener("message", onMsg); clearTimeout(timer); };
+    timer = setTimeout(() => { done(); toast("渡せませんでした。PNG と JSON を保存してから開いてください", 4000); }, 20000);
+    window.addEventListener("message", onMsg);
+    return true;
+  }
+  function receive(onFiles, onFail) {
+    if (location.hash !== "#handoff") return false;
+    history.replaceState(null, "", location.pathname + location.search);
+    const from = window.opener;
+    if (!from) return false;
+    let timer = 0;
+    const onMsg = (e) => {
+      if (e.source !== from || !e.data || e.data.type !== HANDOFF) return;
+      if (msgOrigin() !== "*" && e.origin !== location.origin) return;
+      window.removeEventListener("message", onMsg); clearTimeout(timer);
+      const files = [...(e.data.files || [])].filter((f) => f instanceof File);
+      if (files.length) onFiles(files); else if (onFail) onFail();
+    };
+    window.addEventListener("message", onMsg);
+    // 送る側は合図を受けてから大きな PNG を作ることもあるので長めに待つ
+    timer = setTimeout(() => { window.removeEventListener("message", onMsg); toast("元のツールからデータが届きませんでした"); if (onFail) onFail(); }, 60000);
+    from.postMessage({ type: HANDOFF + "-ready" }, msgOrigin());
+    return true;
+  }
+
   initThemeToggle();
   // 別タブでテーマを変えたら追従する（保存はし直さない）
   window.addEventListener("storage", (e) => {
@@ -469,7 +515,7 @@ const IT = (() => {
     const btn = document.getElementById("themeToggle");
     if (btn) btn.textContent = THEME_LABEL[getTheme()];
   });
-  return { store, toast, saveFile, canvasToBlob, initDrop, applyTheme, getTheme };
+  return { store, toast, saveFile, canvasToBlob, initDrop, applyTheme, getTheme, openIn, receive };
 })();
 </script>
 <!-- common:end common-js -->
@@ -689,6 +735,8 @@ function pngName(){
 }
 $('btnPng').onclick=()=>{ if(!layout)return; const n=pngName(); IT.canvasToBlob(sheet).then(b=>IT.saveFile(n,b),()=>toast('PNGを作成できませんでした')); };
 $('btnJson').onclick=()=>{ if(!layout)return; IT.saveFile(pngName().replace(/\.png$/,'.json'),new Blob([metaJson()],{type:'application/json'})); };
+// 仕上げツールへは JSON 形式の選択によらず Aseprite 互換（Array。コマの順が名前に左右されない）で渡す
+$('btnPolish').onclick=()=>{ if(!layout)return; const n=pngName(); IT.openIn('sprite-polish',IT.canvasToBlob(sheet).then(b=>[new File([b],n,{type:'image/png'}),new File([JSON.stringify(asepriteJson('array'))],n.replace(/\.png$/,'.json'),{type:'application/json'})])); };
 
 // ---- UI 結線 ----
 function syncLabels(){
