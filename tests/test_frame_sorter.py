@@ -146,3 +146,48 @@ def test_settings_persist_and_reset(browser: Browser, base_url: str):
         assert errors == []
     finally:
         page.context.close()
+
+
+def _opaque_pixels(page: Page) -> list[int]:
+    # 各コマの切り出し画像の不透明画素数(アニメの並び順)
+    return page.evaluate(
+        """() => S.groups.flatMap(g => g.ids).map(id => {
+             const c = cutFrame(S.frames.get(id)), d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+             let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 0) n++; return n; })"""
+    )
+
+
+def test_undo_after_redetect_restores_frame_contents(browser: Browser, base_url: str):
+    page, errors = _open(browser, base_url)
+    try:
+        _load_sample(page)
+        before = _opaque_pixels(page)
+        count = page.evaluate("detectCount")
+        page.fill("#gap", "0")
+        page.wait_for_function("(n) => detectCount > n", arg=count)
+        assert sum(_group_sizes(page)) > 28  # 粒がばらばらに検出される
+        page.click("#btnUndo")
+        assert _group_sizes(page) == [7, 8, 6, 7]
+        expect(page.locator("#gap")).to_have_value("6")
+        assert _opaque_pixels(page) == before
+        assert errors == []
+    finally:
+        page.context.close()
+
+
+def test_small_specks_inside_a_frame_are_kept(browser: Browser, base_url: str):
+    page, errors = _open(browser, base_url)
+    try:
+        # 100×100 の L 字の内側、本体から離れた位置に 3×3 の点を置く
+        page.evaluate(
+            """() => { const c = document.createElement('canvas'); c.width = 200; c.height = 200;
+                 const x = c.getContext('2d'); x.fillStyle = '#000'; x.fillRect(0, 0, 200, 200);
+                 x.fillStyle = '#fff'; x.fillRect(50, 50, 10, 100); x.fillRect(50, 140, 100, 10); x.fillRect(120, 70, 3, 3);
+                 setSource(c, 'speck.png'); }"""
+        )
+        assert _group_sizes(page) == [1]
+        assert page.evaluate("S.dropped") == 0
+        assert _opaque_pixels(page) == [10 * 100 + 90 * 10 + 9]
+        assert errors == []
+    finally:
+        page.context.close()

@@ -238,8 +238,8 @@ body.has-selbar .wrap{padding-bottom:110px}
       <section class="flex flex-col gap-3">
         <h2 class="sec-title">シート配置</h2>
         <div class="field">
-          <label>コマの揃え方</label>
-          <div class="join" role="group" aria-label="揃える端" id="anchorSeg">
+          <span class="lbl" id="anchorLbl">コマの揃え方</span>
+          <div class="join" role="group" aria-labelledby="anchorLbl" id="anchorSeg">
             <button class="btn btn-sm" type="button" data-anchor="bottom" aria-pressed="true">下端</button>
             <button class="btn btn-sm" type="button" data-anchor="top" aria-pressed="false">上端</button>
             <button class="btn btn-sm" type="button" data-anchor="left" aria-pressed="false">左端</button>
@@ -636,26 +636,32 @@ function labelComponents(mask, fg, W, H) {
   }
   return { lab, boxes };
 }
+// 検出結果（S.fg / S.label）を決める設定。元に戻すときはこの値から塊の番号を作り直す（同じ入力なら同じ番号になる）
+const detParamsNow = () => ({ det: S.det, bgColor: $('bgColor').value, tol: $('tol').value, gap: $('gap').value });
+function buildMaps(p) {
+  const { W, H } = S;
+  S.fg = computeFg();
+  const r = Math.ceil(+p.gap / 2);
+  const mask = r > 0 ? dilate(S.fg, W, H, r) : S.fg;
+  const res = labelComponents(mask, S.fg, W, H);
+  S.label = res.lab; S.detParams = p; cutCache.clear();
+  return res.boxes;
+}
 function runDetect(withUndo = true) {
   if (!S.src) return;
   if (withUndo && S.frames.size) pushUndo();
-  const { W, H } = S;
-  S.fg = computeFg();
-  const r = Math.ceil(+$('gap').value / 2);
-  const mask = r > 0 ? dilate(S.fg, W, H, r) : S.fg;
-  const { lab, boxes } = labelComponents(mask, S.fg, W, H);
-  S.label = lab;
+  const boxes = buildMaps(detParamsNow());
   const minSize = +$('minSize').value;
-  S.frames = new Map(); S.nextId = 1; S.sel.clear(); cutCache.clear();
-  let dropped = 0;
+  S.frames = new Map(); S.nextId = 1; S.sel.clear();
   boxes.forEach((b, k) => {
-    const w = b.x1 - b.x0 + 1, h = b.y1 - b.y0 + 1;
-    if (w < minSize && h < minSize) { dropped++; return; }
     const id = S.nextId++;
-    S.frames.set(id, { id, x: b.x0, y: b.y0, w, h, labels: [k] });
+    S.frames.set(id, { id, x: b.x0, y: b.y0, w: b.x1 - b.x0 + 1, h: b.y1 - b.y0 + 1, labels: [k] });
   });
-  S.dropped = dropped;
+  // 枠の中に収まる小さな塊を先に取り込んでから、残った小さすぎる塊をゴミとして捨てる
   absorbNested();
+  let dropped = 0;
+  for (const f of [...S.frames.values()]) if (f.w < minSize && f.h < minSize) { S.frames.delete(f.id); dropped++; }
+  S.dropped = dropped;
   autoGroup();
   detectCount++;
   refresh();
@@ -706,16 +712,25 @@ function autoGroup() {
 
 // ---- 元に戻す / やり直す ----
 function snapshot() {
-  return JSON.stringify({ frames: [...S.frames.values()], groups: S.groups, nextId: S.nextId, nextG: S.nextG, activeG: S.activeG });
+  return JSON.stringify({ frames: [...S.frames.values()], groups: S.groups, nextId: S.nextId, nextG: S.nextG, activeG: S.activeG, det: S.detParams, dropped: S.dropped });
 }
 function restore(json) {
   const o = JSON.parse(json);
+  // 検出時の設定が今と違えば、設定を戻して塊の番号を作り直す（コマの labels はその番号を指している）
+  const p = o.det, cur = S.detParams;
+  if (p && (!cur || p.det !== cur.det || p.bgColor !== cur.bgColor || p.tol !== cur.tol || p.gap !== cur.gap)) {
+    clearTimeout(detTimer);
+    setSeg('detSeg', 'det', p.det); $('bgColor').value = p.bgColor; $('tol').value = p.tol; $('gap').value = p.gap;
+    syncLabels(); savePrefs();
+    buildMaps(p);
+  }
   S.frames = new Map(o.frames.map(f => [f.id, f])); S.groups = o.groups; S.nextId = o.nextId; S.nextG = o.nextG; S.activeG = o.activeG;
+  S.dropped = o.dropped || 0;
   S.sel.clear(); refresh();
 }
 function pushUndo() { S.undo.push(snapshot()); if (S.undo.length > 100) S.undo.shift(); S.redo = []; }
-function undo() { if (!S.undo.length) return; S.redo.push(snapshot()); restore(S.undo.pop()); }
-function redo() { if (!S.redo.length) return; S.undo.push(snapshot()); restore(S.redo.pop()); }
+function undo() { if (drag || !S.undo.length) return; S.redo.push(snapshot()); restore(S.undo.pop()); }
+function redo() { if (drag || !S.redo.length) return; S.undo.push(snapshot()); restore(S.redo.pop()); }
 
 // ---- 編集操作 ----
 function groupOf(id) { return S.groups.find(g => g.ids.includes(id)); }
@@ -890,7 +905,9 @@ function sizeOverlay() {
   const v = $('srcView'), dpr = window.devicePixelRatio || 1;
   const w = v.clientWidth, h = v.clientHeight;
   ovl.style.width = w + 'px'; ovl.style.height = h + 'px';
-  ovl.width = Math.max(1, Math.round(w * dpr)); ovl.height = Math.max(1, Math.round(h * dpr));
+  // 大きい画像を拡大表示したときにキャンバスが巨大にならないよう、画素数に上限を設けて解像度を落とす
+  const k = Math.min(dpr, Math.sqrt(16e6 / Math.max(1, w * h)));
+  ovl.width = Math.max(1, Math.round(w * k)); ovl.height = Math.max(1, Math.round(h * k));
   drawOverlay();
 }
 function applyZoom() {
@@ -903,7 +920,7 @@ function applyZoom() {
 }
 new ResizeObserver(sizeOverlay).observe($('srcView'));
 function drawOverlay() {
-  const c = octx, sx = ovl.width / Math.max(1, S.W), dpr = window.devicePixelRatio || 1;
+  const c = octx, sx = ovl.width / Math.max(1, S.W), dpr = ovl.width / Math.max(1, ovl.clientWidth); // CSS 1px あたりのキャンバス画素数
   c.clearRect(0, 0, ovl.width, ovl.height);
   if (!S.src) return;
   c.font = 'bold ' + Math.round(11 * dpr) + 'px ' + getComputedStyle(document.body).fontFamily;
@@ -940,9 +957,10 @@ function normRect(x0, y0, x1, y1) {
   const xe = Math.min(S.W, Math.max(x0, x1)), ye = Math.min(S.H, Math.max(y0, y1));
   return { x, y, w: Math.max(0, xe - x), h: Math.max(0, ye - y) };
 }
-function toImg(e) {
+// round = 画素の境目（枠の端）、floor = クリックした画素そのもの（スポイト・当たり判定）
+function toImg(e, snap = Math.round) {
   const r = ovl.getBoundingClientRect();
-  return [Math.round((e.clientX - r.left) / r.width * S.W), Math.round((e.clientY - r.top) / r.height * S.H)];
+  return [snap((e.clientX - r.left) / r.width * S.W), snap((e.clientY - r.top) / r.height * S.H)];
 }
 function hitFrame(x, y) {
   let best = null;
@@ -960,9 +978,9 @@ function hitEdges(f, x, y) {
 }
 ovl.addEventListener('pointerdown', (e) => {
   if (!S.src || e.button !== 0) return;
-  const [x, y] = toImg(e);
+  const [x, y] = toImg(e), [px, py] = toImg(e, Math.floor);
   if (S.tool === 'pick') {
-    const xx = Math.min(S.W - 1, x), yy = Math.min(S.H - 1, y), j = (yy * S.W + xx) * 4;
+    const xx = Math.max(0, Math.min(S.W - 1, px)), yy = Math.max(0, Math.min(S.H - 1, py)), j = (yy * S.W + xx) * 4;
     $('bgColor').value = rgbToHex(S.data[j], S.data[j + 1], S.data[j + 2]);
     setSeg('detSeg', 'det', 'color'); syncLabels(); savePrefs();
     setSeg('toolSeg', 'tool', 'select');
@@ -973,9 +991,9 @@ ovl.addEventListener('pointerdown', (e) => {
   if (S.tool === 'add') { drag = { kind: 'add', x0: x, y0: y, x1: x, y1: y }; return; }
   if (S.sel.size === 1) {
     const f = S.frames.get([...S.sel][0]), ed = f && hitEdges(f, x, y);
-    if (ed) { pushUndo(); drag = { kind: 'resize', f, ed, orig: { ...f }, x0: x, y0: y }; return; }
+    if (ed) { drag = { kind: 'resize', f, ed, orig: { ...f }, x0: x, y0: y, pushed: false }; return; }
   }
-  const f = hitFrame(x, y), add = e.shiftKey || e.ctrlKey || e.metaKey;
+  const f = hitFrame(px, py), add = e.shiftKey || e.ctrlKey || e.metaKey;
   if (f) {
     if (add) { S.sel.has(f.id) ? S.sel.delete(f.id) : S.sel.add(f.id); }
     else if (!S.sel.has(f.id)) S.sel = new Set([f.id]);
@@ -1002,6 +1020,8 @@ ovl.addEventListener('pointermove', (e) => {
     let x0 = orig.x, y0 = orig.y, x1 = orig.x + orig.w, y1 = orig.y + orig.h;
     if (ed.l) x0 = Math.min(x1 - 1, Math.max(0, x0 + dx)); if (ed.r) x1 = Math.max(x0 + 1, Math.min(S.W, x1 + dx));
     if (ed.t) y0 = Math.min(y1 - 1, Math.max(0, y0 + dy)); if (ed.b) y1 = Math.max(y0 + 1, Math.min(S.H, y1 + dy));
+    // 元に戻す記録は実際に範囲が変わったときに積む（クリックだけで「やり直す」の履歴を消さない）
+    if (!drag.pushed && (x0 !== f.x || y0 !== f.y || x1 - x0 !== f.w || y1 - y0 !== f.h)) { pushUndo(); drag.pushed = true; }
     Object.assign(f, { x: x0, y: y0, w: x1 - x0, h: y1 - y0 });
     drawOverlay(); return;
   }
@@ -1013,7 +1033,7 @@ function endDrag() {
   if (d.kind === 'resize') {
     // 手で範囲を変えたコマは、塊の区別をやめて矩形内のコマ画素すべてを使う
     if (d.f.x !== d.orig.x || d.f.y !== d.orig.y || d.f.w !== d.orig.w || d.f.h !== d.orig.h) { d.f.labels = null; refresh(); }
-    else { S.undo.pop(); drawOverlay(); }
+    else { if (d.pushed) S.undo.pop(); drawOverlay(); }
     return;
   }
   const r = normRect(d.x0, d.y0, d.x1, d.y1);
@@ -1127,7 +1147,7 @@ function drawAnim() {
   const v = $('animView'), c = v.getContext('2d');
   if (!layout) { v.width = v.height = 1; $('animNote').textContent = ''; return; }
   const gid = +$('animGroup').value, rs = layout.rects.filter(r => r.group.id === gid);
-  if (!rs.length) { v.width = v.height = 1; return; }
+  if (!rs.length) { v.width = v.height = 1; $('animNote').textContent = ''; return; }
   animFrame %= rs.length;
   const r = rs[animFrame], s = Math.max(1, Math.min(4, Math.floor(320 / Math.max(r.cell.w, r.cell.h)))) || 1;
   const sc = Math.min(s, 320 / Math.max(r.cell.w, r.cell.h));
@@ -1150,13 +1170,18 @@ function refresh() {
   if (pendBuild) return; pendBuild = true;
   requestAnimationFrame(() => { pendBuild = false; buildSheet(); drawAnim(); });
 }
-function refreshLight() { fillAnimSelect(); renderGroups(); }
+// 名前の変更だけなら一覧は作り直さない（シートは JSON のタグ名に使うので組み直す）
+function refreshLight() {
+  fillAnimSelect();
+  if (pendBuild) return; pendBuild = true;
+  requestAnimationFrame(() => { pendBuild = false; buildSheet(); });
+}
 function refreshSel() { drawOverlay(); refreshSelThumbs(); updateSelNote(); }
 $('sbNewGroup').onclick = newGroupFromSel; $('sbMerge').onclick = mergeSel; $('sbDelete').onclick = deleteSel;
 $('sbClear').onclick = () => { S.sel.clear(); refreshSel(); };
 $('sbMoveTo').addEventListener('change', (e) => {
   const gid = +e.target.value; e.target.value = '';
-  if (gid && S.sel.size) { moveIds(orderedSel(), gid, null); S.activeG = gid; refresh(); toast('選択したコマを移動しました'); }
+  if (gid && S.sel.size) { S.activeG = gid; moveIds(orderedSel(), gid, null); toast('選択したコマを移動しました'); }
 });
 function updateSelBar() {
   const n = S.sel.size, bar = $('selBar');
@@ -1299,7 +1324,11 @@ document.addEventListener('keydown', (e) => {
   if (k === 'delete' || k === 'backspace') { e.preventDefault(); deleteSel(); }
   else if (k === 'm') mergeSel();
   else if (k === 'g') newGroupFromSel();
-  else if (k === 'escape') { S.sel.clear(); drag = null; refreshSel(); }
+  else if (k === 'escape') {
+    if (drag && drag.kind === 'resize') { Object.assign(drag.f, drag.orig); if (drag.pushed) S.undo.pop(); drag = null; drawOverlay(); updateSelNote(); return; }
+    if (drag) { drag = null; drawOverlay(); return; }
+    S.sel.clear(); refreshSel();
+  }
   else if (k === 'v') setSeg('toolSeg', 'tool', 'select');
   else if (k === 'r') setSeg('toolSeg', 'tool', 'add');
   else if (k === 'i') setSeg('toolSeg', 'tool', 'pick');
