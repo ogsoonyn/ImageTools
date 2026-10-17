@@ -1,7 +1,8 @@
 # ImageTools
 
 ゲーム素材づくりなどで使う、画像処理系の小さなツール集です。
-各ツールは **1つのHTMLファイルで完結** しており、インストールやビルドは要りません。
+各ツールは **1つのHTMLファイルで完結** しており、使うだけならインストールは要りません。
+公開ページは Vite でビルドした結果を GitHub Actions から配信しています(段階的な移行の計画は #37)。
 画像の読み込みから書き出しまで、処理はすべてブラウザの中で行われます。フォントなどの読み込みで外部へアクセスすることはありますが、画像ファイルを送信することはありません。
 
 - 公開ページ: https://ogsoonyn.github.io/ImageTools/ (GitHub Pages)
@@ -84,6 +85,20 @@
 > [!NOTE]
 > ローカルの HTML を `file://` で開いた場合、ブラウザの制限で、外部ファイルを読み込む機能(サンプル素材の読み込みなど)が使えないことがあります。ツール本体の処理は通常どおり使えます。
 
+## 開発
+
+ビルドには Node.js 22 以降と npm を使います。テストは Python(uv)です。
+
+```bash
+npm ci              # 初回のみ
+npm run dev         # 開発サーバー(http://localhost:5173/)
+npm run build       # 型チェックのあと dist/ に出力
+npm run preview     # dist/ を配信して確認
+```
+
+`index.html` と `tools/*.html` はすべてビルドの入口になり、同じパスで `dist/` に出力されます。`samples/` もそのまま `dist/` にコピーされます。
+`main` に push すると [`deploy.yml`](.github/workflows/deploy.yml) がビルドして GitHub Pages に公開します。
+
 ## ディレクトリ構成
 
 ```
@@ -93,6 +108,12 @@ ImageTools/
 ├── templates/   新規ツール用のテンプレートと共通UIの仕様
 ├── samples/     ツールで試せるサンプル素材
 ├── tests/       Playwright のスモークテスト(PR ごとに GitHub Actions で実行)
+├── .github/workflows/
+│   ├── smoke.yml   ビルドしてスモークテストを実行
+│   └── deploy.yml  ビルドして GitHub Pages に公開
+├── package.json     ビルド用の npm 設定(Vite / TypeScript)
+├── vite.config.ts   Vite の設定(入口の列挙、samples/ のコピー)
+├── tsconfig.json
 ├── docs/
 │   └── images/  README 用のスクリーンショット
 ├── .nojekyll    GitHub Pages で Jekyll 処理を無効にする

@@ -21,6 +21,16 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Build
+        run: |
+          npm ci
+          npm run build
+
       - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
@@ -31,5 +41,8 @@ jobs:
       - name: Install Chromium
         run: uv run playwright install --with-deps chromium
 
+      # GitHub Pages に公開するのと同じビルド結果を開いて確認する
       - name: Run smoke tests
         run: uv run pytest -v
+        env:
+          SITE_DIR: dist

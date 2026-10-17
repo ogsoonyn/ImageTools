@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 from playwright.sync_api import Browser, ConsoleMessage, Page, expect
 
-from conftest import ROOT
+from conftest import ROOT, SITE
 
 SENDERS = [
     "tools/aseprite-sheet-converter.html",
@@ -91,7 +91,7 @@ def test_open_in_polish_from_file_url(browser: Browser):
     context = _new_context(browser)
     try:
         page = context.new_page()
-        page.goto((ROOT / "tools/frame-sorter.html").as_uri(), wait_until="load")
+        page.goto((SITE / "tools/frame-sorter.html").as_uri(), wait_until="load")
         _load_sample(page)
         polish = _open_polish(page)
         assert polish.evaluate("doc.frames.length") > 0
