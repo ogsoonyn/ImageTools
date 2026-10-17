@@ -199,3 +199,131 @@ def test_settings_saved_and_reset(browser: Browser, base_url: str):
         assert errors == []
     finally:
         _close(page)
+
+
+def test_reset_twice_keeps_defaults(browser: Browser, base_url: str):
+    page, errors = _open(browser, base_url)
+    try:
+        for _ in range(2):
+            page.locator("#btnGuideH").click()
+            page.locator("#btnResetPrefs").click()
+            assert page.evaluate("[S.guides.length, DEF.guides.length]") == [0, 0]
+        assert errors == []
+    finally:
+        _close(page)
+
+
+def test_aseprite_json_roundtrip_keeps_durations_and_direction(browser: Browser, base_url: str, tmp_path: Path):
+    page, errors = _open(browser, base_url)
+    try:
+        page.locator("#exportVar").select_option("base")
+        files = {}
+        for btn in ("PNGを保存", "JSONを保存"):
+            with page.expect_download() as info:
+                page.get_by_role("button", name=btn, exact=True).click()
+            dst = tmp_path / info.value.suggested_filename
+            info.value.save_as(dst)
+            files[dst.suffix] = dst
+        data = json.loads(files[".json"].read_text(encoding="utf-8"))
+        for i, f in enumerate(data["frames"]):
+            f["duration"] = 50 if i % 2 else 400
+        data["meta"]["frameTags"][1]["direction"] = "pingpong"
+        files[".json"].write_text(json.dumps(data), encoding="utf-8")
+        page.locator("#fileInput").set_input_files([files[".png"], files[".json"]])
+        page.wait_for_function("!isSample && doc.frames.length === 12")
+        out = page.evaluate("asepriteJson()")
+        assert [f["duration"] for f in out["frames"]] == [50 if i % 2 else 400 for i in range(12)]
+        assert [t["direction"] for t in out["meta"]["frameTags"]] == ["forward", "pingpong"]
+        assert errors == []
+    finally:
+        _close(page)
+
+
+def test_lifted_selection_survives_undo_redo(browser: Browser, base_url: str):
+    page, errors = _open(browser, base_url)
+    try:
+        opaque = "(() => { const d = composeVar(doc.frames[0], null).getContext('2d').getImageData(0, 0, doc.cw, doc.ch).data; let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i]) n++; return n; })()"
+        n0 = page.evaluate(opaque)
+        page.keyboard.press("m")
+        page.evaluate("selRect = { x: 8, y: 10, w: 16, h: 16 }")
+        page.keyboard.press("ArrowRight")
+        page.keyboard.press("Enter")
+        moved = page.evaluate(opaque)
+        assert moved > n0 // 2
+        # 浮かせたまま元に戻す → やり直すと、動かした絵がそのまま戻る（穴だけにならない）
+        page.keyboard.press("Control+z")
+        assert page.evaluate(opaque) == n0
+        page.keyboard.press("Control+y")
+        assert page.evaluate(opaque) == moved
+        # 浮かせた直後（置く前）に元に戻しても絵が消えない
+        page.evaluate("selRect = { x: 8, y: 10, w: 16, h: 16 }")
+        page.keyboard.press("ArrowLeft")
+        page.keyboard.press("Control+z")
+        page.keyboard.press("Control+y")
+        assert page.evaluate(opaque) == moved
+        assert errors == []
+    finally:
+        _close(page)
+
+
+def test_too_many_columns_is_clamped(browser: Browser, base_url: str):
+    page, errors = _open(browser, base_url)
+    try:
+        page.locator("#gCols").fill("300")
+        page.locator("#btnSplit").click()
+        assert page.input_value("#gCols") == "256"
+        assert page.evaluate("doc.cw") == 1
+        assert errors == []
+    finally:
+        _close(page)
+
+
+def test_variant_follows_frame_when_aligned(browser: Browser, base_url: str):
+    page, errors = _open(browser, base_url)
+    try:
+        page.locator("#varSel").select_option(label="差分: 目閉じ")
+        # 揃える前後で、差分を重ねた絵と元の絵の差（目のところ）が同じだけ動く
+        diff_box = """() => doc.frames.map(f => {
+            const a = compose(f).getContext('2d').getImageData(0, 0, doc.cw, doc.ch).data,
+                  b = composeShown(f).getContext('2d').getImageData(0, 0, doc.cw, doc.ch).data;
+            let x0 = 1e9, y0 = 1e9;
+            for (let i = 0; i < a.length; i += 4) if (a[i] !== b[i] || a[i + 1] !== b[i + 1] || a[i + 2] !== b[i + 2]) { const p = i / 4; x0 = Math.min(x0, p % doc.cw); y0 = Math.min(y0, Math.floor(p / doc.cw)); }
+            return [x0 - f.dx, y0 - f.dy];
+        })"""
+        before = page.evaluate(diff_box)
+        page.locator("#alignScope").select_option("all")
+        page.locator("#btnAlign").click()
+        assert page.evaluate(diff_box) == before
+        assert errors == []
+    finally:
+        _close(page)
+
+
+def test_touching_sample_keeps_previous_work(browser: Browser, base_url: str):
+    page, errors = _open(browser, base_url)
+    try:
+        page.evaluate("IT.store.set(WORK_KEY, Object.assign(serializeWork(), { name: 'REAL_WORK' }))")
+        page.reload()
+        expect(page.locator("#btnPng")).to_be_enabled(timeout=10_000)
+        page.locator(".act-row").nth(0).locator(".thumb").nth(1).click()
+        page.keyboard.press("ArrowLeft")
+        page.wait_for_timeout(2000)
+        assert page.evaluate("IT.store.get(WORK_KEY, null).name") == "REAL_WORK"
+        assert errors == []
+    finally:
+        _close(page)
+
+
+def test_focused_controls_keep_their_keys(browser: Browser, base_url: str):
+    page, errors = _open(browser, base_url)
+    try:
+        page.locator("#filterBox summary").click()
+        slider = page.locator("#filterBox input[type=range]").first
+        slider.focus()
+        v0 = slider.input_value()
+        page.keyboard.press("ArrowRight")
+        assert page.evaluate("doc.frames[0].dx") == 0
+        assert slider.input_value() != v0
+        assert errors == []
+    finally:
+        _close(page)

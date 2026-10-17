@@ -609,7 +609,7 @@ const DEF = { fps: 10, playMode: "fps", loopMode: "loop", animZoom: 0, animBg: "
   onionLoop: true, showGuides: true, guidesInAnim: true, guides: [], sideW: 300, animH: 260, stripH: 270,
   exportVar: "rows", cellAnchor: "b", bgTol: 16, bgMode: "outer",
   filter: { type: "blur", noNew: true, keep: true, scope: "sel", v: {} } };
-let S = Object.assign({}, DEF, IT.store.get(SKEY, {}));
+let S = Object.assign(structuredClone(DEF), IT.store.get(SKEY, {}));
 S.filter = Object.assign({}, DEF.filter, S.filter || {}); S.filter.v = Object.assign({}, S.filter.v);
 S.guides = Array.isArray(S.guides) ? S.guides.filter((g) => g && (g.axis === "h" || g.axis === "v") && Number.isFinite(g.pos)) : [];
 const saveS = () => IT.store.set(SKEY, S);
@@ -665,7 +665,8 @@ function curVar() { return (doc && doc.variants.find((v) => v.id === shownVar)) 
 function composeVar(f, v, c) {
   c = compose(f, c);
   const p = v && f && v.at[f.id];
-  if (p) c.getContext("2d").drawImage(canvasOf(v.img), v.lx + p.x, v.ly + p.y);
+  // パーツの位置はコマのずらし (dx, dy) からの相対。コマを動かすとパーツも付いてくる
+  if (p) c.getContext("2d").drawImage(canvasOf(v.img), v.lx + p.x + f.dx, v.ly + p.y + f.dy);
   return c;
 }
 function composeShown(f, c) { return composeVar(f, curVar(), c); }
@@ -676,9 +677,16 @@ function clonePx(px) { return new ImageData(new Uint8ClampedArray(px.data), px.w
 // ---- 元に戻す / やり直し ----
 function snap() { return { frames: doc.frames.map((f) => ({ ...f })), variants: doc.variants.map((v) => ({ ...v, at: cloneAt(v.at) })), cw: doc.cw, ch: doc.ch, cols: doc.cols, cur, sel: [...selSet] }; }
 function restore(s) { doc.frames = s.frames.map((f) => ({ ...f })); doc.variants = s.variants.map((v) => ({ ...v, at: cloneAt(v.at) })); doc.cw = s.cw; doc.ch = s.ch; doc.cols = s.cols; cur = s.cur; selSet = new Set(s.sel); }
-function commit() { if (!doc) return; undoStack.push(snap()); if (undoStack.length > 100) undoStack.shift(); redoStack = []; syncUndo(); }
-function undo() { if (!undoStack.length) return; float = null; redoStack.push(snap()); restore(undoStack.pop()); clampCur(); refreshAll(); }
-function redo() { if (!redoStack.length) return; float = null; undoStack.push(snap()); restore(redoStack.pop()); clampCur(); refreshAll(); }
+// 履歴の数は絵の大きさで決める（1手ごとに全コマの絵が残ると考えて、合計がおよそ 512MB を超えないように。10〜100手）
+function undoLimit() {
+  let bytes = 0;
+  for (const f of doc.frames) bytes += f.px.data.length;
+  for (const v of doc.variants) bytes += v.img.data.length;
+  return Math.max(10, Math.min(100, Math.floor(512e6 / Math.max(1, bytes))));
+}
+function commit() { if (!doc) return; undoStack.push(snap()); const n = undoLimit(); while (undoStack.length > n) undoStack.shift(); redoStack = []; syncUndo(); }
+function undo() { if (!undoStack.length) return; stampFloat(); redoStack.push(snap()); restore(undoStack.pop()); clampCur(); refreshAll(); }
+function redo() { if (!redoStack.length) return; stampFloat(); undoStack.push(snap()); restore(redoStack.pop()); clampCur(); refreshAll(); }
 function syncUndo() { $("btnUndo").disabled = !undoStack.length; $("btnRedo").disabled = !redoStack.length; scheduleAutosave(); }
 function clampCur() { cur = Math.max(0, Math.min(doc.frames.length - 1, cur)); selSet = new Set([...selSet].filter((i) => i < doc.frames.length)); if (!selSet.size && doc.frames.length) selSet.add(cur); }
 
@@ -698,7 +706,7 @@ function editObj() {
   const f = doc.frames[cur];
   if (!editPart) return f;
   const v = curVar(), p = v && v.at[f.id];
-  return p ? { part: v, px: v.img, lx: v.lx, ly: v.ly, dx: p.x, dy: p.y, id: f.id } : null;
+  return p ? { part: v, px: v.img, lx: v.lx, ly: v.ly, dx: p.x + f.dx, dy: p.y + f.dy, id: f.id } : null;
 }
 function beginEditT(T) { beginEdit(T); if (T.part) { T.part.img = T.px; T.part.lx = T.lx; T.part.ly = T.ly; } }
 function noTarget() { IT.toast(curVar() ? "このコマには差分パーツが貼られていません。「このコマに貼る」を押してください" : "表示する差分を選んでください"); }
@@ -721,6 +729,8 @@ function lastGrid(name) {
   return c >= 1 && r >= 1 && c <= 256 && r <= 256 ? [c, r] : null;
 }
 function cutCells(src, cols, rows, skipEmpty) {
+  // 列・行は画像の幅・高さを超えない（セルが 0px にならないように）
+  cols = Math.max(1, Math.min(cols, src.width)); rows = Math.max(1, Math.min(rows, src.height));
   const cw = Math.floor(src.width / cols), ch = Math.floor(src.height / rows);
   const x = src.getContext("2d", { willReadFrequently: true });
   const frames = [];
@@ -768,6 +778,7 @@ async function loadFiles(files) {
     } catch (e) { IT.toast("JSON を読めなかったので、ファイル名から分割します"); }
   }
   const g = lastGrid(img.name) || guessGrid(src);
+  g[0] = Math.min(g[0], src.width); g[1] = Math.min(g[1], src.height);
   $("gCols").value = g[0]; $("gRows").value = g[1];
   const r = cutCells(src, g[0], g[1], S.skipEmpty);
   setDoc(img.name, src, r.cw, r.ch, g[0], r.frames);
@@ -791,15 +802,24 @@ function fromJson(name, src, data) {
   });
   // タグの無いコマは "default" にまとめる（1行 = 1アクション）
   frames.forEach((f) => (f.tag = "default"));
-  for (const t of (data.meta && data.meta.frameTags) || []) for (let i = t.from; i <= t.to && i < frames.length; i++) frames[i].tag = t.name;
+  const tagDir = {};
+  for (const t of (data.meta && data.meta.frameTags) || []) {
+    for (let i = t.from; i <= t.to && i < frames.length; i++) frames[i].tag = t.name;
+    if (t.direction && t.direction !== "forward") tagDir[t.name] = t.direction;
+  }
   const cols = Math.max(1, Math.round(src.width / cw));
   $("gCols").value = cols; $("gRows").value = Math.max(1, Math.round(src.height / ch));
   setDoc(name, src, cw, ch, cols, frames);
+  doc.tagDir = tagDir;
+  // コマごとの時間が揃っていなければ、再生も書き出しも「コマごとの時間」にする（読んで保存しただけで時間が変わらないように）
+  if (new Set(frames.map((f) => f.dur)).size > 1 && S.playMode !== "dur") { S.playMode = "dur"; $("playMode").value = "dur"; saveS(); IT.toast("JSON のコマごとの時間を使って再生・書き出しします"); }
   return true;
 }
 $("btnSplit").addEventListener("click", () => {
   if (!doc) return;
-  const c = Math.max(1, +$("gCols").value || 1), r = Math.max(1, +$("gRows").value || 1);
+  const c = Math.max(1, Math.min(256, doc.src.width, Math.round(+$("gCols").value) || 1)), r = Math.max(1, Math.min(256, doc.src.height, Math.round(+$("gRows").value) || 1));
+  $("gCols").value = c; $("gRows").value = r;
+  if (float) stampFloat();
   commit();
   const res = cutCells(doc.src, c, r, S.skipEmpty);
   float = null; selRect = null;
@@ -982,7 +1002,7 @@ function drawEditor() {
   if (editPart && vp) {
     const b = bboxOf(v.img) || { x: 0, y: 0, w: v.img.width, h: v.img.height };
     ectx.strokeStyle = "rgba(255,139,0,.9)"; ectx.setLineDash([3, 3]); ectx.lineWidth = 1;
-    ectx.strokeRect((v.lx + vp.x + b.x) * edZ + 0.5, (v.ly + vp.y + b.y) * edZ + 0.5, b.w * edZ - 1, b.h * edZ - 1); ectx.setLineDash([]);
+    ectx.strokeRect((v.lx + vp.x + f.dx + b.x) * edZ + 0.5, (v.ly + vp.y + f.dy + b.y) * edZ + 0.5, b.w * edZ - 1, b.h * edZ - 1); ectx.setLineDash([]);
   }
   const r = float && float.fid === f.id ? { x: float.x, y: float.y, w: float.img.width, h: float.img.height } : selRect;
   if (r && S.tool === "select") {
@@ -1105,7 +1125,9 @@ ed.addEventListener("pointermove", (e) => {
 });
 const endDrag = () => {
   if (!drag) return;
-  const k = drag.kind; drag = null;
+  const k = drag.kind, d = drag; drag = null;
+  // 動かすツールでクリックしただけ（何も動いていない）なら、積んだ履歴を取り消す
+  if ((k === "move" || k === "movePart") && d.base.every(([o, bx, by]) => o === undefined || (k === "move" ? o.dx === bx && o.dy === by : o.x === bx && o.y === by))) { undoStack.pop(); syncUndo(); drawEditor(); return; }
   if (k === "paint" || k === "move" || k === "movePart") afterEdit();
   else drawEditor();
 };
@@ -1274,6 +1296,7 @@ $("opFlipV").addEventListener("click", () => insertAfterSel((fs) => fs.map((f) =
 function deleteSel() {
   if (doc.frames.length <= selSet.size) { IT.toast("すべてのコマは消せません"); return; }
   const s = selected();
+  if (float) stampFloat();
   commit();
   doc.frames = doc.frames.filter((_, i) => !selSet.has(i));
   cur = Math.min(s[0], doc.frames.length - 1); selSet = new Set([cur]); anchor = cur;
@@ -1401,13 +1424,14 @@ function exportSets() {
   const mode = vs.length ? S.exportVar : "base";
   const rowsOf = (v, rename) => acts
     .filter((n) => !v || doc.frames.some((f) => f.tag === n && v.at[f.id]))
-    .map((n) => ({ name: rename && v ? n + "_" + v.name : n, items: doc.frames.filter((f) => f.tag === n).map((f) => ({ f, v })) }));
+    .map((n) => ({ name: rename && v ? n + "_" + v.name : n, act: n, items: doc.frames.filter((f) => f.tag === n).map((f) => ({ f, v })) }));
   const base = { suffix: "", rows: rowsOf(null) };
   if (mode === "rows") return [{ suffix: "", rows: base.rows.concat(...vs.map((v) => rowsOf(v, true))) }];
   if (mode === "files") return [base, ...vs.map((v) => ({ suffix: "_" + safeName(v.name), rows: rowsOf(v) })).filter((s) => s.rows.length)];
   return [base];
 }
-function safeName(n) { return String(n).replace(/[\\/:*?"<>|\s]+/g, "_"); }
+// 「数字x数字」は分割数と読まれるので外す
+function safeName(n) { return String(n).replace(/(?<!\d)\d+\s*[xX×]\s*\d+(?!\d)/g, "").replace(/[\\/:*?"<>|\s]+/g, "_").replace(/^_+|_+$/g, "") || "variant"; }
 // 列数は一番長い行のコマ数
 function layoutOf(set) {
   const cols = Math.max(1, ...set.rows.map((r) => r.items.length)), rows = set.rows.length;
@@ -1433,7 +1457,7 @@ $("exportVar").addEventListener("change", (e) => { S.exportVar = e.target.value;
 function renderSheet(set) {
   const { W, H } = layoutOf(set);
   const c = document.createElement("canvas"); c.width = W; c.height = H;
-  const x = c.getContext("2d");
+  const x = c.getContext("2d", { willReadFrequently: true }); // 作業ファイルを開いたときは「この分割で読み直す」の元画像になる
   set.rows.forEach((row, r) => row.items.forEach((it, i) => x.drawImage(composeVar(it.f, it.v), i * doc.cw, r * doc.ch)));
   return c;
 }
@@ -1448,7 +1472,7 @@ function asepriteJson(set) {
       frame: { x: i * doc.cw, y: r * doc.ch, w: doc.cw, h: doc.ch }, rotated: false, trimmed: false,
       spriteSourceSize: { x: 0, y: 0, w: doc.cw, h: doc.ch }, sourceSize: { w: doc.cw, h: doc.ch }, duration: S.playMode === "dur" ? it.f.dur : Math.round(1000 / S.fps),
     }));
-    frameTags.push({ name: row.name, from, to: frames.length - 1, direction: "forward", color: "#000000ff" });
+    frameTags.push({ name: row.name, from, to: frames.length - 1, direction: (doc.tagDir && doc.tagDir[row.act]) || "forward", color: "#000000ff" });
   });
   return { frames, meta: { app: "https://www.aseprite.org/", version: "1.3", image: pngName(set), format: "RGBA8888", size: { w: W, h: H }, scale: "1", frameTags, layers: [], slices: [] } };
 }
@@ -1521,7 +1545,8 @@ function uniqVarName(n) { const names = doc.variants.map((v) => v.name); let k =
 function addVariant(img, x, y) {
   commit();
   const v = { id: nextId++, name: uniqVarName($("varName").value.trim() && !curVar() ? $("varName").value.trim() : "差分" + (doc.variants.length + 1)), img, lx: 0, ly: 0, at: {} };
-  v.at[doc.frames[cur].id] = { x, y };
+  const f = doc.frames[cur];
+  v.at[f.id] = { x: x - f.dx, y: y - f.dy };
   doc.variants.push(v);
   shownVar = v.id; editPart = true; selRect = null;
   if (S.tool === "select" || S.tool === "move") setTool("pen");
@@ -1564,8 +1589,10 @@ function isTyping(el) {
 // プルダウンやボタンを使ったあとにフォーカスを残さない（ショートカットがそのまま効くように）
 document.addEventListener("change", (e) => { if (e.target.tagName === "SELECT" || (e.target.tagName === "INPUT" && !isTyping(e.target))) e.target.blur(); });
 document.addEventListener("click", (e) => { const b = e.target.closest && e.target.closest("button"); if (b && e.detail > 0) b.blur(); });
+// フォーカスのあるスライダー・チェック・ボタンなどは、矢印・スペース・Enter をその部品に任せる
+const ownsKey = (el, k) => el && el.matches && el.matches("select, button, summary, input:not([type=text]):not([type=number]):not([type=search])") && /^(Arrow|Enter$| $)/.test(k);
 document.addEventListener("keydown", (e) => {
-  if (isTyping(e.target)) return;
+  if (isTyping(e.target) || ownsKey(e.target, e.key)) return;
   if (!doc || !doc.frames.length) return;
   const mod = e.ctrlKey || e.metaKey, k = e.key;
   if (mod && (k === "z" || k === "Z")) { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
@@ -1636,7 +1663,7 @@ function refreshAll() {
 $("btnUndo").addEventListener("click", undo);
 $("btnRedo").addEventListener("click", redo);
 $("btnResetPrefs").addEventListener("click", () => {
-  IT.store.remove(SKEY); S = Object.assign({}, DEF); applySettings(); IT.toast("設定をリセットしました");
+  IT.store.remove(SKEY); S = structuredClone(DEF); applySettings(); IT.toast("設定をリセットしました");
 });
 function applySettings() {
   $("fps").value = S.fps; $("playMode").value = S.playMode; $("loopMode").value = S.loopMode; $("animZoom").value = S.animZoom; $("animBg").value = S.animBg;
@@ -1958,11 +1985,10 @@ $("btnCell").addEventListener("click", () => {
   const nw = Math.max(1, Math.min(1024, Math.round(+$("cellW").value || doc.cw))), nh = Math.max(1, Math.min(1024, Math.round(+$("cellH").value || doc.ch)));
   if (nw === doc.cw && nh === doc.ch) return;
   const a = S.cellAnchor, ox = a === "tl" ? 0 : Math.floor((nw - doc.cw) / 2), oy = a === "tl" ? 0 : a === "b" ? nh - doc.ch : Math.floor((nh - doc.ch) / 2);
+  if (float) stampFloat();
   commit();
-  if (float) float = null;
   selRect = null;
   for (const f of doc.frames) { f.dx += ox; f.dy += oy; }
-  for (const v of doc.variants) for (const p of Object.values(v.at)) { p.x += ox; p.y += oy; }
   doc.cw = nw; doc.ch = nh;
   refreshAll();
   IT.toast("セルを " + nw + "×" + nh + " にしました");
@@ -2015,7 +2041,7 @@ $("btnBg").addEventListener("click", () => {
 const WORK_APP = "imagetools-sprite-polish", WORK_KEY = "sprite-polish:work";
 function serializeWork() {
   return {
-    app: WORK_APP, version: 1, name: doc.name, cw: doc.cw, ch: doc.ch, savedAt: new Date().toISOString(),
+    app: WORK_APP, version: 2, name: doc.name, cw: doc.cw, ch: doc.ch, tagDir: doc.tagDir || {}, savedAt: new Date().toISOString(),
     frames: doc.frames.map((f) => ({ png: canvasOf(f.px).toDataURL(), lx: f.lx, ly: f.ly, dx: f.dx, dy: f.dy, dur: f.dur, tag: f.tag })),
     variants: doc.variants.map((v) => ({
       name: v.name, png: canvasOf(v.img).toDataURL(), lx: v.lx, ly: v.ly,
@@ -2025,6 +2051,7 @@ function serializeWork() {
 }
 function pngToPx(url) {
   return new Promise((res, rej) => {
+    if (!/^data:image\//.test(String(url))) { rej(new Error("画像のデータではありません")); return; }
     const im = new Image();
     im.onload = () => { const c = document.createElement("canvas"); c.width = im.width; c.height = im.height; const x = c.getContext("2d", { willReadFrequently: true }); x.drawImage(im, 0, 0); res(x.getImageData(0, 0, c.width, c.height)); };
     im.onerror = () => rej(new Error("画像を読めません"));
@@ -2038,18 +2065,23 @@ async function openWork(data, label) {
     const variants = [];
     for (const v of data.variants || []) {
       const at = {};
-      for (const [i, x, y] of v.at || []) if (frames[i]) at[frames[i].id] = { x, y };
+      // 版 1 はパーツの位置をセルの中の位置で持っていた
+      const rel = (data.version | 0) >= 2;
+      for (const [i, x, y] of v.at || []) if (frames[i]) at[frames[i].id] = rel ? { x, y } : { x: x - frames[i].dx, y: y - frames[i].dy };
       variants.push({ id: nextId++, name: String(v.name), img: await pngToPx(v.png), lx: v.lx | 0, ly: v.ly | 0, at });
     }
     isSample = false; $("sampleNote").hidden = true;
     const tmp = { cw: data.cw, ch: data.ch, frames, variants };
     // 「この分割で読み直す」用の元画像は、開いた時点の絵を並べたシートにする
     const prevDoc = doc; doc = tmp;
-    const set = { suffix: "", rows: actions().map((n) => ({ name: n, items: frames.filter((f) => f.tag === n).map((f) => ({ f, v: null })) })) };
-    const src = renderSheet(set), l = layoutOf(set);
-    doc = prevDoc;
+    let src, l;
+    try {
+      const set = { suffix: "", rows: actions().map((n) => ({ name: n, items: frames.filter((f) => f.tag === n).map((f) => ({ f, v: null })) })) };
+      src = renderSheet(set); l = layoutOf(set);
+    } finally { doc = prevDoc; }
     $("gCols").value = l.cols; $("gRows").value = l.rows;
     setDoc(data.name || "work.png", src, data.cw, data.ch, l.cols, frames, variants);
+    doc.tagDir = data.tagDir && typeof data.tagDir === "object" ? data.tagDir : {};
     $("srcNote").textContent = (label || "作業ファイル") + " から " + frames.length + " コマ" + (variants.length ? "・差分 " + variants.length + " 件" : "") + "を開きました";
   } catch (e) { IT.toast("作業ファイルを開けませんでした"); }
 }
@@ -2059,7 +2091,8 @@ $("btnWorkSave").addEventListener("click", () => {
 });
 let autoTimer = 0, autoWarned = false;
 function scheduleAutosave() {
-  if (!doc || !undoStack.length) return; // 何も直していないうちは残さない
+  // 何も直していないうち・起動時のサンプルを触っただけのときは残さない（前回の作業を上書きしないように）
+  if (!doc || !undoStack.length || isSample) return;
   clearTimeout(autoTimer);
   autoTimer = setTimeout(() => {
     if (!IT.store.set(WORK_KEY, serializeWork()) && !autoWarned) { autoWarned = true; IT.toast("シートが大きく、ブラウザに自動では残せません。「作業を保存」を使ってください", 4000); }
