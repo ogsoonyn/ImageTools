@@ -234,6 +234,14 @@ def test_aseprite_json_roundtrip_keeps_durations_and_direction(browser: Browser,
         out = page.evaluate("asepriteJson()")
         assert [f["duration"] for f in out["frames"]] == [50 if i % 2 else 400 for i in range(12)]
         assert [t["direction"] for t in out["meta"]["frameTags"]] == ["forward", "pingpong"]
+        # 全コマ同じ時間でも、FPS と違えばその時間を保つ
+        page.locator("#playMode").select_option("fps")
+        for f in data["frames"]:
+            f["duration"] = 50
+        files[".json"].write_text(json.dumps(data), encoding="utf-8")
+        page.locator("#fileInput").set_input_files([files[".png"], files[".json"]])
+        page.wait_for_function("doc.frames.every(f => f.dur === 50)")
+        assert {f["duration"] for f in page.evaluate("asepriteJson()")["frames"]} == {50}
         assert errors == []
     finally:
         _close(page)
@@ -324,6 +332,24 @@ def test_focused_controls_keep_their_keys(browser: Browser, base_url: str):
         page.keyboard.press("ArrowRight")
         assert page.evaluate("doc.frames[0].dx") == 0
         assert slider.input_value() != v0
+        assert errors == []
+    finally:
+        _close(page)
+
+
+def test_move_tool_click_keeps_redo(browser: Browser, base_url: str):
+    page, errors = _open(browser, base_url)
+    try:
+        page.locator(".act-row").nth(0).locator(".thumb").nth(1).click()
+        page.keyboard.press("ArrowLeft")
+        page.keyboard.press("Control+z")
+        assert page.evaluate("redoStack.length") == 1
+        page.keyboard.press("v")
+        canvas = page.locator("#ed")
+        canvas.scroll_into_view_if_needed()
+        box = canvas.bounding_box()
+        page.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+        assert page.evaluate("[redoStack.length, undoStack.length]") == [1, 0]
         assert errors == []
     finally:
         _close(page)

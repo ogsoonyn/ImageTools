@@ -675,8 +675,8 @@ function newFrame(px, extra) { return Object.assign({ id: nextId++, px, lx: 0, l
 function clonePx(px) { return new ImageData(new Uint8ClampedArray(px.data), px.width, px.height); }
 
 // ---- 元に戻す / やり直し ----
-function snap() { return { frames: doc.frames.map((f) => ({ ...f })), variants: doc.variants.map((v) => ({ ...v, at: cloneAt(v.at) })), cw: doc.cw, ch: doc.ch, cols: doc.cols, cur, sel: [...selSet] }; }
-function restore(s) { doc.frames = s.frames.map((f) => ({ ...f })); doc.variants = s.variants.map((v) => ({ ...v, at: cloneAt(v.at) })); doc.cw = s.cw; doc.ch = s.ch; doc.cols = s.cols; cur = s.cur; selSet = new Set(s.sel); }
+function snap() { return { frames: doc.frames.map((f) => ({ ...f })), variants: doc.variants.map((v) => ({ ...v, at: cloneAt(v.at) })), cw: doc.cw, ch: doc.ch, cols: doc.cols, tagDir: { ...doc.tagDir }, cur, sel: [...selSet] }; }
+function restore(s) { doc.frames = s.frames.map((f) => ({ ...f })); doc.variants = s.variants.map((v) => ({ ...v, at: cloneAt(v.at) })); doc.cw = s.cw; doc.ch = s.ch; doc.cols = s.cols; doc.tagDir = { ...s.tagDir }; cur = s.cur; selSet = new Set(s.sel); }
 // 履歴の数は絵の大きさで決める（1手ごとに全コマの絵が残ると考えて、合計がおよそ 512MB を超えないように。10〜100手）
 function undoLimit() {
   let bytes = 0;
@@ -743,7 +743,7 @@ function cutCells(src, cols, rows, skipEmpty) {
 }
 function setDoc(name, src, cw, ch, cols, frames, variants) {
   float = null; selRect = null; undoStack = []; redoStack = [];
-  doc = { name, src, cw, ch, cols, frames, variants: variants || [] };
+  doc = { name, src, cw, ch, cols, frames, variants: variants || [], tagDir: {} };
   shownVar = 0; editPart = false;
   cur = 0; selSet = new Set(frames.length ? [0] : []); anchor = 0;
   $("baseName").value = baseOf(name);
@@ -811,8 +811,8 @@ function fromJson(name, src, data) {
   $("gCols").value = cols; $("gRows").value = Math.max(1, Math.round(src.height / ch));
   setDoc(name, src, cw, ch, cols, frames);
   doc.tagDir = tagDir;
-  // コマごとの時間が揃っていなければ、再生も書き出しも「コマごとの時間」にする（読んで保存しただけで時間が変わらないように）
-  if (new Set(frames.map((f) => f.dur)).size > 1 && S.playMode !== "dur") { S.playMode = "dur"; $("playMode").value = "dur"; saveS(); IT.toast("JSON のコマごとの時間を使って再生・書き出しします"); }
+  // コマごとの時間が FPS と合わなければ、再生も書き出しも「コマごとの時間」にする（読んで保存しただけで時間が変わらないように）
+  if (frames.some((f) => f.dur !== Math.round(1000 / S.fps)) && S.playMode !== "dur") { S.playMode = "dur"; $("playMode").value = "dur"; saveS(); IT.toast("JSON のコマごとの時間を使って再生・書き出しします"); }
   return true;
 }
 $("btnSplit").addEventListener("click", () => {
@@ -1079,13 +1079,15 @@ ed.addEventListener("pointerdown", (e) => {
   const [x, y] = cellAt(e), t = S.tool;
   if (t === "picker") { const c = shownAt(x, y); if (c[3]) setColor(rgbHex(c)); return; }
   if (t === "move") {
+    const keepRedo = redoStack;
     commit();
     const targets = selSet.has(cur) ? [...selSet] : [cur];
     const v = curVar();
     if (editPart && v) {
       drag = { kind: "movePart", sx: x, sy: y, base: targets.map((i) => v.at[doc.frames[i].id]).filter(Boolean).map((p) => [p, p.x, p.y]) };
-      if (!drag.base.length) { drag = null; noTarget(); }
+      if (!drag.base.length) { drag = null; undoStack.pop(); redoStack = keepRedo; syncUndo(); noTarget(); }
     } else drag = { kind: "move", sx: x, sy: y, base: targets.map((i) => [doc.frames[i], doc.frames[i].dx, doc.frames[i].dy]) };
+    if (drag) drag.keepRedo = keepRedo;
     drawEditor(); return;
   }
   const f = editObj();
@@ -1127,7 +1129,7 @@ const endDrag = () => {
   if (!drag) return;
   const k = drag.kind, d = drag; drag = null;
   // 動かすツールでクリックしただけ（何も動いていない）なら、積んだ履歴を取り消す
-  if ((k === "move" || k === "movePart") && d.base.every(([o, bx, by]) => o === undefined || (k === "move" ? o.dx === bx && o.dy === by : o.x === bx && o.y === by))) { undoStack.pop(); syncUndo(); drawEditor(); return; }
+  if ((k === "move" || k === "movePart") && d.base.every(([o, bx, by]) => o === undefined || (k === "move" ? o.dx === bx && o.dy === by : o.x === bx && o.y === by))) { undoStack.pop(); redoStack = d.keepRedo || []; syncUndo(); drawEditor(); return; }
   if (k === "paint" || k === "move" || k === "movePart") afterEdit();
   else drawEditor();
 };
@@ -1332,6 +1334,7 @@ $("btnTag").addEventListener("click", () => {
   if (actions().includes(t)) { IT.toast("「" + t + "」はもうあります。コマをその行へドラッグすると移せます"); return; }
   commit();
   doc.frames = doc.frames.map((f) => (f.tag === old ? { ...f, tag: t } : f));
+  if (doc.tagDir && doc.tagDir[old]) { doc.tagDir = { ...doc.tagDir, [t]: doc.tagDir[old] }; delete doc.tagDir[old]; }
   refreshAll();
 });
 $("fTag").addEventListener("keydown", (e) => { if (e.key === "Enter") $("btnTag").click(); });
