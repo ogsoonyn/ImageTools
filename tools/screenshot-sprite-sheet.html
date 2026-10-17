@@ -297,7 +297,7 @@ h1{text-wrap:balance}
             <button class="btn btn-sm" type="button" id="btnClear" disabled>すべて削除</button>
           </div>
         </div>
-        <div class="strip" id="strip" aria-label="コマ一覧"></div>
+        <div class="strip" id="strip" role="listbox" aria-label="コマ一覧" tabindex="-1"></div>
         <p class="hint">ドラッグで並べ替え。選択中は <kbd class="mono">←</kbd><kbd class="mono">→</kbd> で選択移動、<kbd class="mono">Alt</kbd>+<kbd class="mono">←</kbd><kbd class="mono">→</kbd> で順番入れ替え、<kbd class="mono">Delete</kbd> で削除。</p>
       </section>
 
@@ -508,7 +508,8 @@ async function fileToCanvas(blob) {
   const bmp = await createImageBitmap(blob);
   const c = document.createElement("canvas");
   c.width = bmp.width; c.height = bmp.height;
-  c.getContext("2d").drawImage(bmp, 0, 0);
+  // 重複チェックやスポイトで画素を読むので、読み出し向けのコンテキストにしておく
+  c.getContext("2d", { willReadFrequently: true }).drawImage(bmp, 0, 0);
   bmp.close();
   return c;
 }
@@ -616,15 +617,17 @@ function renderStrip() {
     name.textContent = f.name; name.title = f.name;
     const ops = document.createElement("div");
     ops.className = "ops";
-    const mk = (label, title, fn, dis) => {
+    const mk = (op, label, title, fn, dis) => {
       const b = document.createElement("button");
       b.type = "button"; b.className = "btn btn-sm"; b.textContent = label; b.title = title; b.disabled = !!dis;
-      b.addEventListener("click", (e) => { e.stopPropagation(); fn(); });
+      b.dataset.op = op;
+      b.setAttribute("aria-label", "#" + (i + 1) + " を" + title.replace(/^このコマを/, ""));
+      b.addEventListener("click", (e) => { e.stopPropagation(); fn(); restoreFocus(op); });
       ops.appendChild(b);
     };
-    mk("◀", "前へ移動", () => move(i, i - 1), i === 0);
-    mk("▶", "後ろへ移動", () => move(i, i + 1), i === frames.length - 1);
-    mk("✕", "このコマを削除", () => removeAt(i));
+    mk("prev", "◀", "前へ移動", () => move(i, i - 1), i === 0);
+    mk("next", "▶", "後ろへ移動", () => move(i, i + 1), i === frames.length - 1);
+    mk("del", "✕", "このコマを削除", () => removeAt(i));
     const flags = document.createElement("div");
     flags.className = "flags";
     if (f.dx || f.dy) { const b = document.createElement("span"); b.className = "badge badge-soft mono"; b.textContent = "ずらし " + f.dx + "," + f.dy; flags.appendChild(b); }
@@ -648,6 +651,13 @@ function renderStrip() {
   const selEl = strip.children[sel];
   if (selEl) selEl.scrollIntoView({ block: "nearest", inline: "nearest" });
 }
+// ボタン操作で一覧を作り直したあと、移動先（削除なら次のコマ）の同じボタンにフォーカスを戻す
+function restoreFocus(op) {
+  const strip = $("strip");
+  const b = strip.querySelector('.thumb[data-i="' + sel + '"] button[data-op="' + op + '"]:not(:disabled)')
+    || strip.querySelector('.thumb[data-i="' + sel + '"] button:not(:disabled)');
+  (b || strip).focus();
+}
 function select(i) {
   if (!frames.length) return;
   sel = Math.max(0, Math.min(frames.length - 1, i));
@@ -662,8 +672,11 @@ function move(from, to) {
 }
 function removeAt(i) {
   frames.splice(i, 1);
-  if (sel >= frames.length) sel = frames.length - 1;
-  if (!frames.length) { crop = null; syncCropInputs(); }
+  // 選択中より前のコマを消したら、同じコマを選んだままにする
+  if (i < sel || sel >= frames.length) sel = Math.max(frames.length ? 0 : -1, sel - 1);
+  if (!frames.length) crop = null;
+  else clampCrop(); // 一番大きいコマを消すと、範囲が残りのコマの外に出ることがある
+  syncCropInputs();
   refreshAll();
 }
 let clearArmed = 0;
@@ -682,13 +695,13 @@ $("btnReverse").addEventListener("click", () => { frames.reverse(); if (sel >= 0
 
 document.addEventListener("keydown", (e) => {
   const t = e.target;
-  if (t && (t.tagName === "INPUT" || t.tagName === "SELECT" || t.tagName === "TEXTAREA")) return;
-  if (!frames.length || sel < 0) return;
+  if (t && (t.tagName === "INPUT" || t.tagName === "SELECT" || t.tagName === "TEXTAREA" || t.tagName === "BUTTON")) return;
+  if (e.ctrlKey || e.metaKey || !frames.length || sel < 0) return;
   if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
     const d = e.key === "ArrowLeft" ? -1 : 1;
     e.preventDefault();
     if (e.altKey) move(sel, sel + d); else select(sel + d);
-  } else if (e.key === "Delete" || e.key === "Backspace") {
+  } else if (e.key === "Delete") {
     e.preventDefault(); removeAt(sel);
   }
 });
@@ -821,7 +834,7 @@ cc.addEventListener("pointermove", (e) => {
   setCrop(r); drawCrop();
 });
 cc.addEventListener("pointerdown", (e) => {
-  if (!frames.length) return;
+  if (!frames.length || e.button !== 0) return;
   const p = ptr(e);
   if (pickMode) {
     const f = frames[sel], px = Math.floor(p.x), py = Math.floor(p.y);
@@ -872,7 +885,14 @@ function rebuild() {
   const rows = Math.ceil(n / cols);
   const W = o.margin * 2 + cols * cw + (cols - 1) * o.spacing;
   const H = o.margin * 2 + rows * ch + (rows - 1) * o.spacing;
-  if (W * H > 16384 * 16384 || W > 32767 || H > 32767) { toast("シートが大きすぎます。倍率か範囲を小さくしてください"); return; }
+  if (W * H > 16384 * 16384 || W > 32767 || H > 32767) {
+    // 古い配置で書き出さないよう、保存できない状態にしておく
+    layout = null; sheet.width = sheet.height = 1;
+    $("btnPng").disabled = $("btnJson").disabled = true;
+    $("sheetInfo").textContent = W + "×" + H + " は大きすぎます。倍率か範囲を小さくしてください";
+    $("outNote").textContent = "";
+    return;
+  }
   sheet.width = W; sheet.height = H;
   sctx.clearRect(0, 0, W, H);
   sctx.imageSmoothingEnabled = o.smooth; sctx.imageSmoothingQuality = "high";
@@ -882,9 +902,7 @@ function rebuild() {
   const rects = frames.map((f, i) => {
     const x = o.margin + (i % cols) * (cw + o.spacing), y = o.margin + Math.floor(i / cols) * (ch + o.spacing);
     // 等倍で切り出して背景を抜いてから、倍率をかけて配置する（範囲が元画像からはみ出す部分は透明）
-    const cell = cutCell(f, r);
-    if (ko) keyOut(cell, ko);
-    const placed = placeCell(cell, f, al);
+    const placed = placeCell(keyedCell(f, r, ko), f, al);
     if (!!f.overflow !== placed.overflow) { f.overflow = placed.overflow; overflowChanged = true; }
     sctx.drawImage(placed.canvas, 0, 0, r.w, r.h, x, y, cw, ch);
     return { x, y, w: cw, h: ch };
@@ -892,21 +910,25 @@ function rebuild() {
   if (overflowChanged) renderStrip();
   layout = { W, H, cols, rows, cw, ch, rects };
   sheet.classList.toggle("pixel", !o.smooth);
-  $("sheetInfo").textContent = W + "×" + H + "（" + cols + "列×" + rows + "行、1コマ " + cw + "×" + ch + "）";
+  $("sheetInfo").textContent = W + "×" + H + "（" + cols + "列×" + rows + "行、1コマ " + cw + "×" + ch + "）"
+    + (W * H > 4096 * 4096 ? " ※Safari では表示・保存できない大きさです" : "");
   $("outNote").textContent = pngName() + " / " + pngName().replace(/\.png$/, ".json");
   const sizes = new Set(frames.map((f) => f.w + "×" + f.h));
   $("srcNote").textContent = n + " コマ" + (sizes.size > 1 ? "（サイズ違いが混在しています）" : "（" + [...sizes][0] + "）");
   $("animInfo").textContent = Math.round(1000 / Math.max(10, +$("duration").value || 100) * 10) / 10 + " fps / " + n + " コマ";
 }
 // ---- 背景の透過 ----
-const cellCanvas = document.createElement("canvas");
-function cutCell(f, r) {
-  const c = cellCanvas;
-  if (c.width !== r.w || c.height !== r.h) { c.width = r.w; c.height = r.h; }
-  const x = c.getContext("2d", { willReadFrequently: true });
-  x.clearRect(0, 0, r.w, r.h);
-  x.drawImage(f.src, -r.x, -r.y);
-  return c;
+// 切り出しと背景の透過はコマごとに結果を持っておき、範囲か透過の設定が変わったときだけ作り直す。
+// 揃え・微調整・並べ方の変更は描き直すだけで済む
+function keyedCell(f, r, ko) {
+  const key = [r.x, r.y, r.w, r.h].join(",") + "|" + (ko ? [ko.mode, ko.auto, ko.key, ko.tol, ko.soft].join(",") : "");
+  if (f.cache && f.cache.key === key) return f.cache;
+  const c = document.createElement("canvas");
+  c.width = r.w; c.height = r.h;
+  c.getContext("2d", { willReadFrequently: true }).drawImage(f.src, -r.x, -r.y);
+  if (ko) keyOut(c, ko);
+  f.cache = { key, cell: c, box: undefined };
+  return f.cache;
 }
 function hexToRgb(h) { const n = parseInt(h.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; }
 function keyOpts() {
@@ -957,10 +979,14 @@ let pickMode = false;
 function setPick(on) { pickMode = on; $("btnPick").setAttribute("aria-pressed", on); cc.style.cursor = on ? "copy" : ""; }
 $("btnPick").addEventListener("click", () => { if (!frames.length) { toast("先にコマを追加してください"); return; } setPick(!pickMode); if (pickMode) toast("トリミング範囲のプレビューで色をクリックしてください"); });
 let rebuildQueued = false;
+// 連続した入力（スライダーやドラッグ）は描画ごとに 1 回へまとめる
 function scheduleRebuild() { if (rebuildQueued) return; rebuildQueued = true; requestAnimationFrame(() => { rebuildQueued = false; rebuild(); }); }
+// 1 回の操作で複数のリスナーが走っても再構築は 1 回にする（同じタスクの終わりに実行）
+let rebuildSoon = false;
+function requestRebuild() { if (rebuildSoon) return; rebuildSoon = true; queueMicrotask(() => { rebuildSoon = false; rebuild(); }); }
 ["tol", "soft", "keyColor"].forEach((id) => $(id).addEventListener("input", () => { syncBgUi(); scheduleRebuild(); }));
 $("keyColor").addEventListener("input", () => { $("keyManual").checked = true; });
-["bgMode", "keyAuto", "keyManual"].forEach((id) => $(id).addEventListener("change", () => { syncBgUi(); savePrefs(); rebuild(); }));
+["bgMode", "keyAuto", "keyManual"].forEach((id) => $(id).addEventListener("change", () => { syncBgUi(); savePrefs(); requestRebuild(); }));
 
 // ---- 位置の揃えと微調整 ----
 function alignOpts(keyed) {
@@ -980,14 +1006,16 @@ function contentBox(c) {
 }
 const placedCanvas = document.createElement("canvas");
 // 絵の範囲をセル内で揃え、コマごとのずれ（dx, dy）を足して描く。セルの大きさはトリミング範囲のまま
-function placeCell(cell, f, al) {
+function placeCell(entry, f, al) {
+  const cell = entry.cell;
+  const box0 = () => (entry.box === undefined ? (entry.box = contentBox(cell)) : entry.box);
   const w = cell.width, h = cell.height, out = placedCanvas;
   if (out.width !== w || out.height !== h) { out.width = w; out.height = h; }
   const x = out.getContext("2d");
   x.clearRect(0, 0, w, h);
   let ox = 0, oy = 0, box = null;
   if (al.h !== "none" || al.v !== "none") {
-    box = contentBox(cell);
+    box = box0();
     if (box) {
       if (al.h === "left") ox = al.padX - box.x;
       else if (al.h === "center") ox = Math.round((w - box.w) / 2) - box.x;
@@ -1001,7 +1029,7 @@ function placeCell(cell, f, al) {
   x.drawImage(cell, ox, oy);
   let overflow = false;
   if (ox || oy) {
-    const b = box || contentBox(cell);
+    const b = box || box0();
     if (b) overflow = b.x + ox < 0 || b.y + oy < 0 || b.x + b.w + ox > w || b.y + b.h + oy > h;
   }
   return { canvas: out, overflow };
@@ -1044,7 +1072,7 @@ $("btnPlay").addEventListener("click", () => setPlaying(!playing));
 // 微調整: 窓のドラッグ量（表示上の px）を元画像の px に直して dx, dy に足す
 let nudgeDrag = null;
 anim.addEventListener("pointerdown", (e) => {
-  if (!frames[sel] || !layout) return;
+  if (!frames[sel] || !layout || e.button !== 0) return;
   setPlaying(false);
   const b = anim.getBoundingClientRect();
   nudgeDrag = { x: e.clientX, y: e.clientY, dx: frames[sel].dx, dy: frames[sel].dy, k: anim.width / b.width / opts().scale };
@@ -1152,7 +1180,7 @@ function drawSampleFrame(i, n) {
   g.fillStyle = "#7fb2ff"; g.fillRect(cx - Math.round(sw / 4), by - sh + 3, 3, 2);
   g.fillStyle = "#10203c"; g.fillRect(cx - 5, by - Math.round(sh * 0.55), 2, 3); g.fillRect(cx + 3, by - Math.round(sh * 0.55), 2, 3);
   const c = document.createElement("canvas"); c.width = lw * Z; c.height = lh * Z;
-  const x = c.getContext("2d"); x.imageSmoothingEnabled = false; x.drawImage(lo, 0, 0, c.width, c.height);
+  const x = c.getContext("2d", { willReadFrequently: true }); x.imageSmoothingEnabled = false; x.drawImage(lo, 0, 0, c.width, c.height);
   return c;
 }
 $("btnSample").addEventListener("click", () => {
@@ -1193,8 +1221,8 @@ function applyPrefs(p) {
   rebuild();
 }
 function savePrefs() { if (!restoringPrefs) IT.store.set(PREFS_KEY, readPrefs()); }
-PREF_IDS.forEach((id) => $(id).addEventListener("change", () => { savePrefs(); rebuild(); }));
-["cols", "spacing", "margin", "scale", "duration", "baseName"].forEach((id) => $(id).addEventListener("input", rebuild));
+PREF_IDS.forEach((id) => $(id).addEventListener("change", () => { savePrefs(); requestRebuild(); }));
+["cols", "spacing", "margin", "scale", "duration", "baseName"].forEach((id) => $(id).addEventListener("input", scheduleRebuild));
 syncBgUi(); syncAlignUi();
 $("btnResetPrefs").addEventListener("click", () => { applyPrefs(PREF_DEFAULTS); IT.store.remove(PREFS_KEY); toast("設定をリセットしました"); });
 { const saved = IT.store.get(PREFS_KEY); if (saved && typeof saved === "object") applyPrefs(saved); }

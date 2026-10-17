@@ -137,3 +137,32 @@ def test_settings_saved_restored_and_reset(browser: Browser, base_url: str):
     page.reload()
     expect(page.locator("#cols")).to_have_value("0")
     assert errors == []
+
+
+def test_duplicate_paste_and_delete_keep_state_consistent(browser: Browser, base_url: str):
+    page = browser.new_context().new_page()
+    problems: list[str] = []
+    page.on("console", lambda m: problems.append(f"{m.type}: {m.text}") if m.type in ("error", "warning") else None)
+    page.on("pageerror", lambda err: problems.append(f"pageerror: {err}"))
+    page.goto(f"{base_url}/{TOOL}")
+
+    # 同じ画像を続けて貼っても(重複チェックで画素を読んでも)コンソールに警告が出ない
+    for _ in range(3):
+        _paste_color(page, "#00aa00")
+    expect(page.locator("#countBadge")).to_have_text("3")
+    _paste_color(page, "#123456", 300, 200)
+    expect(page.locator("#countBadge")).to_have_text("4")
+
+    # 範囲を大きいコマの右下に置いてから、そのコマを消すと範囲が残りのコマの内側に戻る
+    page.evaluate("setCrop({ x: 200, y: 100, w: 80, h: 80 })")
+    page.click(".thumb >> nth=2")
+    page.click(".thumb >> nth=3 >> button[data-op='del']")
+    assert page.evaluate("crop") == {"x": 0, "y": 0, "w": 64, "h": 48}
+
+    # 選択中より前のコマを消しても、同じコマを選んだまま
+    page.click(".thumb >> nth=2")
+    selected_id = page.evaluate("frames[sel].id")
+    page.click(".thumb >> nth=0 >> button[data-op='del']")
+    assert page.evaluate("frames[sel].id") == selected_id
+    assert page.evaluate("[layout.rects.length, frames.length]") == [2, 2]
+    assert problems == []
