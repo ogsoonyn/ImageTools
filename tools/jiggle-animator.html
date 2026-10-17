@@ -457,8 +457,9 @@ const IT = (() => {
   const msgOrigin = () => (location.protocol !== "file:" && location.origin && location.origin !== "null" ? location.origin : "*");
   function openIn(tool, files) {
     const win = window.open(tool + ".html#handoff", "_blank");
-    if (!win) { toast("新しいタブを開けませんでした（ポップアップがブロックされていないか確認してください）", 4000); return false; }
     const filesP = Promise.resolve(files);
+    filesP.catch(() => {}); // 渡す前に失敗・タブを開けなかったときに未処理の reject を出さない
+    if (!win) { toast("新しいタブを開けませんでした（ポップアップがブロックされていないか確認してください）", 4000); return false; }
     let timer = 0;
     const onMsg = (e) => {
       if (e.source !== win || !e.data || e.data.type !== HANDOFF + "-ready") return;
@@ -484,7 +485,8 @@ const IT = (() => {
       if (files.length) onFiles(files); else if (onFail) onFail();
     };
     window.addEventListener("message", onMsg);
-    timer = setTimeout(() => { window.removeEventListener("message", onMsg); toast("元のツールからデータが届きませんでした"); if (onFail) onFail(); }, 10000);
+    // 送る側は合図を受けてから大きな PNG を作ることもあるので長めに待つ
+    timer = setTimeout(() => { window.removeEventListener("message", onMsg); toast("元のツールからデータが届きませんでした"); if (onFail) onFail(); }, 60000);
     from.postMessage({ type: HANDOFF + "-ready" }, msgOrigin());
     return true;
   }

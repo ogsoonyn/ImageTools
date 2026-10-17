@@ -472,8 +472,9 @@ const IT = (() => {
   const msgOrigin = () => (location.protocol !== "file:" && location.origin && location.origin !== "null" ? location.origin : "*");
   function openIn(tool, files) {
     const win = window.open(tool + ".html#handoff", "_blank");
-    if (!win) { toast("新しいタブを開けませんでした（ポップアップがブロックされていないか確認してください）", 4000); return false; }
     const filesP = Promise.resolve(files);
+    filesP.catch(() => {}); // 渡す前に失敗・タブを開けなかったときに未処理の reject を出さない
+    if (!win) { toast("新しいタブを開けませんでした（ポップアップがブロックされていないか確認してください）", 4000); return false; }
     let timer = 0;
     const onMsg = (e) => {
       if (e.source !== win || !e.data || e.data.type !== HANDOFF + "-ready") return;
@@ -499,7 +500,8 @@ const IT = (() => {
       if (files.length) onFiles(files); else if (onFail) onFail();
     };
     window.addEventListener("message", onMsg);
-    timer = setTimeout(() => { window.removeEventListener("message", onMsg); toast("元のツールからデータが届きませんでした"); if (onFail) onFail(); }, 10000);
+    // 送る側は合図を受けてから大きな PNG を作ることもあるので長めに待つ
+    timer = setTimeout(() => { window.removeEventListener("message", onMsg); toast("元のツールからデータが届きませんでした"); if (onFail) onFail(); }, 60000);
     from.postMessage({ type: HANDOFF + "-ready" }, msgOrigin());
     return true;
   }
@@ -733,8 +735,8 @@ function pngName(){
 }
 $('btnPng').onclick=()=>{ if(!layout)return; const n=pngName(); IT.canvasToBlob(sheet).then(b=>IT.saveFile(n,b),()=>toast('PNGを作成できませんでした')); };
 $('btnJson').onclick=()=>{ if(!layout)return; IT.saveFile(pngName().replace(/\.png$/,'.json'),new Blob([metaJson()],{type:'application/json'})); };
-// 仕上げツールへは JSON 形式の選択によらず Aseprite 互換（Hash）で渡す
-$('btnPolish').onclick=()=>{ if(!layout)return; const n=pngName(); IT.openIn('sprite-polish',IT.canvasToBlob(sheet).then(b=>[new File([b],n,{type:'image/png'}),new File([JSON.stringify(asepriteJson('hash'))],n.replace(/\.png$/,'.json'),{type:'application/json'})])); };
+// 仕上げツールへは JSON 形式の選択によらず Aseprite 互換（Array。コマの順が名前に左右されない）で渡す
+$('btnPolish').onclick=()=>{ if(!layout)return; const n=pngName(); IT.openIn('sprite-polish',IT.canvasToBlob(sheet).then(b=>[new File([b],n,{type:'image/png'}),new File([JSON.stringify(asepriteJson('array'))],n.replace(/\.png$/,'.json'),{type:'application/json'})])); };
 
 // ---- UI 結線 ----
 function syncLabels(){

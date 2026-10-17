@@ -53,7 +53,10 @@ def _saved(page: Page, label: str) -> tuple[str, bytes]:
     return d.suggested_filename, Path(d.path()).read_bytes()
 
 
-def _open_polish(page: Page) -> Page:
+def _open_polish(page: Page, problems: list[str] | None = None) -> Page:
+    if problems is not None:
+        # 受け取りの途中で出たエラーも拾えるよう、タブが開いた時点から見る
+        page.context.on("page", lambda p: _watch(p, problems))
     with page.context.expect_page(timeout=10_000) as info:
         page.get_by_role("button", name=OPEN_POLISH, exact=True).click()
     polish = info.value
@@ -73,8 +76,7 @@ def test_open_in_polish(browser: Browser, base_url: str, path: str):
         _load_sample(page)
         png_name, _ = _saved(page, "PNGを保存")
 
-        polish = _open_polish(page)
-        _watch(polish, problems)
+        polish = _open_polish(page, problems)
         assert polish.url.endswith("/tools/sprite-polish.html"), "受け取った後は #handoff を消す"
         assert polish.evaluate("doc.name") == png_name
         assert polish.evaluate("doc.frames.length") > 0
@@ -98,13 +100,13 @@ def test_open_in_polish_from_file_url(browser: Browser):
 
 
 def test_open_in_polish_matches_saved_json(browser: Browser, base_url: str):
-    """コマ整列ツールの例で、保存した JSON(Hash 形式)と仕上げツールに入ったコマ数・アクションが一致すること。"""
+    """コマ整列ツールの例で、保存した JSON(Array 形式)と仕上げツールに入ったコマ数・アクションが一致すること。"""
     context = _new_context(browser)
     try:
         page = context.new_page()
         page.goto(f"{base_url}/tools/frame-sorter.html", wait_until="load")
         _load_sample(page)
-        page.select_option("#jsonFormat", "hash")
+        page.select_option("#jsonFormat", "array")
         _, data = _saved(page, "JSONを保存")
         saved = json.loads(data)
         polish = _open_polish(page)
