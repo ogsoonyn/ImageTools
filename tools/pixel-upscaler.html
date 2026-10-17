@@ -527,8 +527,9 @@ const PU = (() => {
         const ex2 = !eq(pe, pc) && !eq(pb, pc), ex3 = !eq(pe, pg) && !eq(pd, pg);
         const left = 2 * ke <= ki && ex3, up = ke >= 2 * ki && ex2;
         if (left || up) {
-          if (left) { o[n3] = mix(o[n3], px, 0.75); o[n2] = mix(o[n2], px, 0.25); }
-          if (up) { o[n3] = mix(o[n3], px, 0.75); o[n1] = mix(o[n1], px, 0.25); }
+          o[n3] = mix(o[n3], px, 0.75);
+          if (left) o[n2] = mix(o[n2], px, 0.25);
+          if (up) o[n1] = mix(o[n1], px, 0.25);
         } else o[n3] = mix(o[n3], px, 0.5);
       } else if (e <= i) o[n3] = mix(o[n3], px, 0.25);
     }
@@ -659,7 +660,7 @@ const PU = (() => {
     }
     // 輪郭でない元画素に、隣の輪郭の分類を持たせる（拡大で輪郭がはみ出した所のため）
     const near = new Uint8Array(w * h);
-    const prio = [0, 3, 1, 2]; // 外側 > 内側 > 点
+    const prio = [0, 3, 2, 1]; // 外側 > 内側 > 点（値は分類の番号ごとの優先度）
     for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
       const i = y * w + x;
       if (cls[i]) { near[i] = cls[i]; continue; }
@@ -837,7 +838,7 @@ const PU = (() => {
   function render(img, opt) {
     const { method, scale: s, frame, thin } = opt;
     const hasAlpha = img.px.some((c) => !opaque(c));
-    const border = hasAlpha || frame ? "clear" : "clamp";
+    const border = hasAlpha ? "clear" : "clamp"; // 不透明な画像はコマ単位でも端の色を延ばす（透明で角が欠けないように）
     const cols = frame ? frame.cols : 1, rows = frame ? frame.rows : 1;
     const cw = Math.floor(img.w / cols), ch = Math.floor(img.h / rows);
     const W = cw * cols * s, H = ch * rows * s, out = new Uint32Array(W * H);
@@ -888,9 +889,23 @@ const DEFAULTS = {
 };
 let prefs = loadPrefs();
 function loadPrefs() {
-  const s = IT.store.get(SETTINGS_KEY, {}) || {};
-  const p = { ...structuredClone(DEFAULTS), ...s };
-  if (!Array.isArray(p.panes) || p.panes.length !== 2) p.panes = structuredClone(DEFAULTS.panes);
+  // 保存された値は壊れていることもあるので、使える値か確かめてから使う
+  const s = IT.store.get(SETTINGS_KEY, {}) || {}, d = structuredClone(DEFAULTS);
+  const pick = (v, ok, def) => (ok.includes(v) ? v : def);
+  const int = (v, lo, hi, def) => (Number.isInteger(v) && v >= lo && v <= hi ? v : def);
+  const methods = PU.METHODS.map((m) => m.id);
+  const p = {
+    scale: pick(s.scale, [2, 3, 4, 6, 8], d.scale),
+    zoom: pick(s.zoom, ["fit", 1, 2, 4], d.zoom),
+    bg: pick(s.bg, ["checker", "white", "black"], d.bg),
+    inner: typeof s.inner === "boolean" ? s.inner : d.inner,
+    dotKeep: int(s.dotKeep, 0, 8, d.dotKeep),
+    panes: d.panes.map((def, i) => {
+      const q = Array.isArray(s.panes) && s.panes[i] && typeof s.panes[i] === "object" ? s.panes[i] : {};
+      return { method: pick(q.method, methods, def.method), thin: typeof q.thin === "boolean" ? q.thin : def.thin };
+    }),
+  };
+  p.width = int(s.width, 1, p.scale, d.width);
   return p;
 }
 const savePrefs = () => IT.store.set(SETTINGS_KEY, prefs);
@@ -981,10 +996,14 @@ $("scaleBtns").addEventListener("click", (e) => {
   prefs.scale = +b.dataset.s; savePrefs(); syncScaleUi(); schedule();
 });
 function syncFrameUi() {
-  const f = state.frame, img = state.img;
+  const f = state.frame;
   $("frameOn").checked = f.on;
   $("cols").value = String(f.cols); $("rows").value = String(f.rows);
   $("cols").disabled = $("rows").disabled = !f.on;
+  syncCellInfo();
+}
+function syncCellInfo() {
+  const f = state.frame, img = state.img;
   if (img && f.on) {
     const cw = Math.floor(img.w / f.cols), ch = Math.floor(img.h / f.rows);
     const rest = img.w % f.cols || img.h % f.rows;
@@ -992,12 +1011,15 @@ function syncFrameUi() {
   } else $("cellInfo").textContent = "隣のコマの色が境目ににじまないよう、1コマずつ別々に拡大します。";
 }
 $("frameOn").addEventListener("change", (e) => { state.frame.on = e.target.checked; syncFrameUi(); schedule(); });
-for (const id of ["cols", "rows"]) $(id).addEventListener("input", (e) => {
-  const v = Math.max(1, Math.min(256, Math.floor(+e.target.value || 1)));
-  const lim = id === "cols" ? state.img.w : state.img.h;
-  state.frame[id] = Math.min(v, lim);
-  syncFrameUi(); schedule();
-});
+for (const id of ["cols", "rows"]) {
+  const read = (e) => {
+    const v = Math.max(1, Math.min(256, Math.floor(+e.target.value || 1)));
+    state.frame[id] = Math.min(v, id === "cols" ? state.img.w : state.img.h);
+  };
+  // 入力中は欄を書き換えない（消して打ち直す途中で値が変わらないように）。確定したら丸めた値を書き戻す
+  $(id).addEventListener("input", (e) => { if (e.target.value === "") return; read(e); syncCellInfo(); schedule(); });
+  $(id).addEventListener("change", (e) => { read(e); syncFrameUi(); schedule(); });
+}
 
 // ---- 輪郭 ----
 const hex = (c) => "#" + [c & 255, (c >>> 8) & 255, (c >>> 16) & 255].map((v) => v.toString(16).padStart(2, "0")).join("");
@@ -1072,10 +1094,14 @@ function run() {
     } catch (e) {
       console.error(e);
       IT.toast("処理できませんでした（" + e.message + "）");
+      state.results[i] = null;
+      $("c" + i).width = 1; $("c" + i).height = 1;
+      $("d" + i).disabled = true;
       continue;
     }
     const ms = Math.round(performance.now() - t0);
     state.results[i] = r;
+    $("d" + i).disabled = false;
     const cv = $("c" + i);
     cv.width = r.w; cv.height = r.h;
     cv.getContext("2d").putImageData(toImageData(r), 0, 0);
@@ -1103,7 +1129,7 @@ function applyZoom() {
     if (!r) continue;
     if (prefs.zoom === "fit") {
       // 枠に収まる最大の整数倍（収まらなければ縮小）
-      const bw = v.clientWidth - 24, bh = v.clientHeight - 24;
+      const bw = Math.max(1, v.clientWidth - 24), bh = Math.max(1, v.clientHeight - 24);
       const k = Math.min(bw / r.w, bh / r.h);
       const z = k >= 1 ? Math.floor(k) : k;
       cv.style.width = r.w * z + "px"; cv.style.height = r.h * z + "px";

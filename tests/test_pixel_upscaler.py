@@ -142,3 +142,43 @@ def test_settings_saved_and_reset(browser: Browser, base_url: str):
         assert errors == []
     finally:
         page.context.close()
+
+
+def test_opaque_image_in_frame_mode_has_no_holes(browser: Browser, base_url: str):
+    page, errors = _open(browser, base_url)
+    try:
+        # 不透明な 2×2 コマのタイルを、コマ単位で拡大しても透明な画素ができない
+        holes = page.evaluate(
+            """() => {
+                const w = 8, h = 8, px = new Uint32Array(w * h);
+                for (let i = 0; i < px.length; i++) px[i] = (i % 3 ? 0xff3366cc : 0xff22aa44) >>> 0;
+                const out = {};
+                for (const method of ["nearest", "scale", "xbr", "xbrs"]) {
+                  const r = PU.render({ px, w, h }, { method, scale: 2, frame: { cols: 2, rows: 2 }, thin: null });
+                  out[method] = r.px.filter((c) => (c >>> 24) < 128).length;
+                }
+                return out;
+            }"""
+        )
+        assert holes == {"nearest": 0, "scale": 0, "xbr": 0, "xbrs": 0}
+        assert errors == []
+    finally:
+        page.context.close()
+
+
+def test_broken_settings_fall_back_to_defaults(browser: Browser, base_url: str):
+    page, errors = _open(browser, base_url)
+    try:
+        page.evaluate(
+            """() => localStorage.setItem('imagetools:pixel-upscaler:settings',
+                JSON.stringify({ scale: 5, zoom: 'x', bg: 1, width: 99, panes: [{ method: 'bogus' }, null] }))"""
+        )
+        page.reload()
+        page.wait_for_function("renderCount > 0")
+        expect(page.locator("#scaleBtns [data-s='4']")).to_have_attribute("aria-pressed", "true")
+        expect(page.locator("#m0")).to_have_value("nearest")
+        expect(page.locator("#m1")).to_have_value("xbr")
+        assert _size(page, 1) == [128, 64]
+        assert errors == []
+    finally:
+        page.context.close()
