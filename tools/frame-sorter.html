@@ -273,6 +273,7 @@ body.has-selbar .wrap{padding-bottom:110px}
         <div class="field">
           <label for="baseName">出力ファイル名</label>
           <input class="input" type="text" id="baseName" value="sprite_sheet">
+          <span class="hint">末尾に「_AxB（列数x行数）」を付けて保存（セルの大きさがアニメごとのときは付けません）：<span class="mono" id="pngPreview"></span></span>
         </div>
         <div class="field">
           <label for="jsonFormat">JSON形式</label>
@@ -896,6 +897,7 @@ function updateStats() {
   if (has && layout.overflow) w.push(layout.overflow + ' コマがセルからはみ出しています（はみ出た部分は切れます）');
   $('stWarn').textContent = w.join(' / '); $('stWarn').hidden = !w.length;
   $('btnPng').disabled = $('btnJson').disabled = !has;
+  $('pngPreview').textContent = has ? pngName() : '';
 }
 
 // ---- 元画像ビュー（枠の表示と操作） ----
@@ -1235,7 +1237,13 @@ function asepriteJson(fmt) {
     },
   };
 }
-function pngName() { return ($('baseName').value.trim().replace(/\.(png|json)$/i, '') || 'sprite_sheet') + '.png'; }
+// 末尾に _列x行 を付ける（Anim-Editor がファイル名から分割数を読む形式）。セルの大きさがアニメごとに違うと格子にならないので付けない
+function pngName() {
+  const base = $('baseName').value.trim().replace(/\.(png|json)$/i, '').replace(/[_\-\s]*\d+\s*[xX×]\s*\d+$/, '') || 'sprite_sheet';
+  const u = layout && layout.uniform;
+  return base + (u ? '_' + Math.round(layout.W / u[0]) + 'x' + Math.round(layout.H / u[1]) : '') + '.png';
+}
+$('baseName').addEventListener('input', () => { $('pngPreview').textContent = layout ? pngName() : ''; });
 $('btnPng').onclick = () => { if (!layout) return; IT.canvasToBlob(sheet).then(b => IT.saveFile(pngName(), b), () => toast('PNGを作成できませんでした')); };
 $('btnJson').onclick = () => { if (!layout) return; IT.saveFile(pngName().replace(/\.png$/, '.json'), new Blob([JSON.stringify(asepriteJson($('jsonFormat').value), null, 2)], { type: 'application/json' })); };
 

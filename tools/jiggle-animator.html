@@ -705,10 +705,12 @@ function buildSheet() {
   c.style.width = c.width * z + "px"; c.style.height = c.height * z + "px";
   c.classList.toggle("pixelated", mode === "pixel");
   const txt = c.width + "×" + c.height + " px(" + sheetCols + "列 × " + sheetRows + "行、1コマ " + frameW + "×" + frameH + ")";
-  $("sheetSize").textContent = txt;
+  $("sheetSize").textContent = txt + " → " + sheetName() + ".png";
   $("sheetInfo").textContent = txt;
 }
 function baseName() { return (src ? src.name : "sprite").replace(/\.[^.]+$/, "") + "_jiggle"; }
+// 出力ファイル名。末尾に _列x行 を付ける（Anim-Editor がファイル名から分割数を読む形式）
+function sheetName() { return baseName() + "_" + sheetCols + "x" + sheetRows; }
 function asepriteJson() {
   const dur = Math.round(1000 / Math.max(1, S.fps));
   const stem = baseName();
@@ -722,7 +724,7 @@ function asepriteJson() {
     })),
     meta: {
       app: "https://www.aseprite.org/", version: "1.3",
-      image: stem + ".png", format: "RGBA8888",
+      image: sheetName() + ".png", format: "RGBA8888",
       size: { w: sheetCols * frameW, h: sheetRows * frameH }, scale: "1",
       frameTags: [{ name: "jiggle", from: 0, to: Math.max(0, frames.length - 1), direction: "forward", color: "#000000ff" }],
       layers: [], slices: [],
@@ -1204,12 +1206,12 @@ $("btnSample").addEventListener("click", () => {
 // ---------------------------------------------------------------- 出力・リセット
 $("btnPng").addEventListener("click", async () => {
   if (!frames.length) return;
-  try { await IT.saveFile(baseName() + ".png", await IT.canvasToBlob($("sheet"))); }
+  try { await IT.saveFile(sheetName() + ".png", await IT.canvasToBlob($("sheet"))); }
   catch (e) { IT.toast("PNGを作成できませんでした"); }
 });
 $("btnJson").addEventListener("click", () => {
   if (!frames.length) return;
-  IT.saveFile(baseName() + ".json", new Blob([JSON.stringify(asepriteJson(), null, 2)], { type: "application/json" }));
+  IT.saveFile(sheetName() + ".json", new Blob([JSON.stringify(asepriteJson(), null, 2)], { type: "application/json" }));
 });
 $("btnResetPrefs").addEventListener("click", () => {
   S = { ...DEFAULTS }; IT.store.remove(SETTINGS_KEY);
