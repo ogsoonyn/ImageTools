@@ -1073,8 +1073,11 @@ const IT = (() => {
   function zoomValue() {
     const z = state.opts.zoom;
     if (z !== "fit") return +z;
-    const avail = $("sheet-scroll").clientWidth - 2;
-    return Math.max(1, Math.min(16, Math.floor(avail / state.sheet.width) || 1));
+    // 入れ物は max-h-[60vh] なので、幅と高さの両方に収まる倍率にする
+    const availW = $("sheet-scroll").clientWidth - 2;
+    const availH = Math.floor(window.innerHeight * 0.6) - 2;
+    const fit = Math.min(availW / state.sheet.width, availH / state.sheet.height);
+    return Math.max(1, Math.min(16, Math.floor(fit) || 1));
   }
   function drawView() {
     if (!state.doc) return;
