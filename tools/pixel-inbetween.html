@@ -885,13 +885,17 @@ function generate(keepEdited) {
   refreshAll();
 }
 let genTimer = 0;
+function runGenerate() {
+  genTimer = 0;
+  if (S.frames.some((f) => f.kind === "tween" && f.edited)) { $("banner").hidden = false; return; }
+  generate(false);
+}
 function requestGenerate() {
   clearTimeout(genTimer);
-  genTimer = setTimeout(() => {
-    if (S.frames.some((f) => f.kind === "tween" && f.edited)) { $("banner").hidden = false; return; }
-    generate(false);
-  }, 60);
+  genTimer = setTimeout(runGenerate, 60);
 }
+// 書き出しの直前に、待っている作り直しを済ませる（読み込み直後に保存してもコマが空にならないように）
+function flushGenerate() { if (genTimer) { clearTimeout(genTimer); runGenerate(); } }
 function hideBanner() { $("banner").hidden = true; }
 $("btnKeep").onclick = () => generate(true);
 $("btnOverwrite").onclick = () => generate(false);
@@ -1340,13 +1344,15 @@ function animFrames() {
   const s = +P.scale, order = playOrder();
   return { list: order.map((i) => scaled(S.frames[i].px, s)), delays: order.map((i) => durOf(S.frames[i])), w: S.W * s, h: S.H * s };
 }
-$("btnSheet").onclick = () => { if (S.frames.length) saveSheet(); };
+$("btnSheet").onclick = () => { flushGenerate(); if (S.frames.length) saveSheet(); };
 $("btnGif").onclick = () => {
+  flushGenerate();
   if (!S.frames.length) return;
   const a = animFrames();
   IT.saveFile(`${S.baseName}_inbetween.gif`, new Blob([encodeGIF(a.list, a.w, a.h, a.delays)], { type: "image/gif" }));
 };
 $("btnApng").onclick = async () => {
+  flushGenerate();
   if (!S.frames.length) return;
   if (typeof CompressionStream === "undefined") { toast("このブラウザでは APNG を作れません"); return; }
   const a = animFrames();
