@@ -534,15 +534,16 @@ async function loadFiles(files, append) {
   // 中身が空のコマ（分割したシートの余り）は捨てる
   const kept = raws.filter((r) => { const d = r.img.data; for (let i = 3; i < d.length; i += 4) if (d[i] >= 128) return true; return false; });
   if (!kept.length) { toast("絵のある画像が見つかりませんでした"); return; }
-  if (!append) { S.keys = []; S.segs = []; S.frames = []; S.baseName = files[0].name.replace(/\.[^.]+$/, "") || "inbetween"; }
+  if (!append) { S.keys = []; S.segs = []; S.segMemo = new Map(); S.frames = []; S.baseName = files[0].name.replace(/\.[^.]+$/, "") || "inbetween"; }
   for (const r of kept) S.keys.push({ id: nextKeyId++, name: r.name, raw: r.img, px: null, frame: null });
-  normalizeKeys();
+  const change = normalizeKeys();
   if (S.keys.length < 2) toast("キー絵を2枚以上入れると中割りを作れます");
-  afterKeysChanged();
+  afterKeysChanged(change);
 }
 
 // 背景を透明にし、半透明は 0 か 255 にそろえ、全キーを同じ大きさに置き直す
 // force = false のときは、大きさが変わらなければ手直し済みのキー絵をそのまま残す
+// 戻り値: "size" = コマの大きさが変わった / "rebuilt" = 大きさはそのままで全キーを置き直した / null = それ以外
 function normalizeKeys(force) {
   let W = 0, H = 0;
   for (const k of S.keys) { W = Math.max(W, k.raw.width); H = Math.max(H, k.raw.height); }
@@ -567,20 +568,39 @@ function normalizeKeys(force) {
   }
   const big = W > 256 || H > 256;
   $("sizeInfo").innerHTML = S.keys.length ? `1コマ <span class="mono">${W}×${H}</span> px・キー絵 ${S.keys.length} 枚` + (big ? `<br><span class="warn">256px 角を超えているので、作り直しに時間がかかることがあります</span>` : "") : "";
+  return !same ? "size" : force ? "rebuilt" : null;
 }
 
-function afterKeysChanged() {
+// change は normalizeKeys の戻り値。コマの大きさが変わったら古い大きさのコマは使えないので、すぐ作り直す
+function afterKeysChanged(change) {
   ensureSegs();
   renderKeyList();
   renderSegList();
-  requestGenerate();
   rebuildPalette();
+  if (change === "size") {
+    const lost = S.frames.some((f) => f.kind === "tween" && f.edited);
+    clearTimeout(genTimer); genTimer = 0;
+    generate(false);
+    if (lost) toast("絵の大きさが変わったので、手直しした中割りも作り直しました", 4000);
+  } else if (change === "rebuilt") {
+    // キー絵を置き直したので、コマの並びも新しいキー絵で組み直す（手直しした中割りは残す）
+    clearTimeout(genTimer); genTimer = 0;
+    generate(true);
+  } else requestGenerate();
 }
 
+// 区間の設定はキー絵の組（id）にひも付けるので、並べ替えや削除をしても同じ組の設定が残る
 function ensureSegs() {
   const count = S.keys.length < 2 ? 0 : S.keys.length - 1 + (P.loop ? 1 : 0);
-  while (S.segs.length < count) S.segs.push({ n: P.n, ease: P.ease });
-  S.segs.length = count;
+  // 一度作った組の設定は覚えておき、並べ替えで組が戻ったときにも使う
+  S.segMemo = S.segMemo || new Map();
+  for (const sg of S.segs) S.segMemo.set(sg.pair, sg);
+  S.segs = [];
+  for (let i = 0; i < count; i++) {
+    const [a, b] = segEnds(i), pair = a.id + ">" + b.id;
+    if (!S.segMemo.has(pair)) S.segMemo.set(pair, { pair, n: P.n, ease: P.ease });
+    S.segs.push(S.segMemo.get(pair));
+  }
 }
 
 // ================= 自動の中割り =================
@@ -665,25 +685,17 @@ function matchSets(A, B, o, colorW) {
     const dx = b.x - a.x - o.x, dy = b.y - a.y - o.y;
     return dx * dx + dy * dy + (colorW ? colorDist2(a.c, b.c) * colorW : 0);
   };
-  // 候補の組: 少なければ全部、多ければ近いものだけ（格子で探す）
+  // 候補の組: 少なければ全部、多ければ近いものだけ。数の少ない側から、多い側を格子で探す
   let ci = [], cj = [], cc = [];
+  const add = (i, j) => { ci.push(i); cj.push(j); cc.push(cost(A[i], B[j])); };
   if (na * nb <= 250000) {
-    for (let i = 0; i < na; i++) for (let j = 0; j < nb; j++) { ci.push(i); cj.push(j); cc.push(cost(A[i], B[j])); }
+    for (let i = 0; i < na; i++) for (let j = 0; j < nb; j++) add(i, j);
+  } else if (na <= nb) {
+    const grid = pointGrid(B);
+    for (let i = 0; i < na; i++) for (const j of grid.near(A[i].x + o.x, A[i].y + o.y, 10)) add(i, j);
   } else {
-    const cs = 4, gw = Math.ceil(S.W / cs) + 2, gh = Math.ceil(S.H / cs) + 2, cells = new Map();
-    B.forEach((b, j) => { const k = Math.floor(b.x / cs) + Math.floor(b.y / cs) * gw; (cells.get(k) || cells.set(k, []).get(k)).push(j); });
-    const K = 10, maxR = Math.max(gw, gh);
-    for (let i = 0; i < na; i++) {
-      const qx = Math.floor((A[i].x + o.x) / cs), qy = Math.floor((A[i].y + o.y) / cs);
-      const found = [];
-      for (let r = 0; r <= maxR && found.length < K; r++) {
-        for (let gy = qy - r; gy <= qy + r; gy++) for (let gx = qx - r; gx <= qx + r; gx++) {
-          if (Math.max(Math.abs(gx - qx), Math.abs(gy - qy)) !== r) continue;
-          const l = cells.get(gx + gy * gw); if (l) found.push(...l);
-        }
-      }
-      for (const j of found) { ci.push(i); cj.push(j); cc.push(cost(A[i], B[j])); }
-    }
+    const grid = pointGrid(A);
+    for (let j = 0; j < nb; j++) for (const i of grid.near(B[j].x - o.x, B[j].y - o.y, 10)) add(i, j);
   }
   const order = Array.from(cc.keys()).sort((x, y) => cc[x] - cc[y]);
   const ua = new Uint8Array(na), ub = new Uint8Array(nb);
@@ -735,10 +747,42 @@ function matchSets(A, B, o, colorW) {
   return res;
 }
 
-function nearest(p, list, o) {
-  let best = null, bd = Infinity;
-  for (const q of list) { const d = (q.x - p.x - o.x) ** 2 + (q.y - p.y - o.y) ** 2; if (d < bd) { bd = d; best = q; } }
-  return best;
+// 点の集まりを 4px 四方の格子に分けて、近い点を速く探す
+function pointGrid(list) {
+  const cs = 4, gw = Math.ceil(S.W / cs) + 1, gh = Math.ceil(S.H / cs) + 1, cells = new Map();
+  list.forEach((p, j) => { const k = Math.floor(p.x / cs) + Math.floor(p.y / cs) * gw; (cells.get(k) || cells.set(k, []).get(k)).push(j); });
+  const maxR = gw + gh;
+  // (qx, qy) を中心に r 周目の升だけを見る
+  const ring = (qx, qy, r, fn) => {
+    const at = (gx, gy) => { if (gx < 0 || gy < 0 || gx >= gw || gy >= gh) return; const l = cells.get(gx + gy * gw); if (l) for (const j of l) fn(j); };
+    if (r === 0) { at(qx, qy); return; }
+    for (let gx = qx - r; gx <= qx + r; gx++) { at(gx, qy - r); at(gx, qy + r); }
+    for (let gy = qy - r + 1; gy < qy + r; gy++) { at(qx - r, gy); at(qx + r, gy); }
+  };
+  const center = (x, y) => [Math.min(gw - 1, Math.max(0, Math.floor(x / cs))), Math.min(gh - 1, Math.max(0, Math.floor(y / cs)))];
+  return {
+    // k 個（全体がそれより少なければ全部）見つかるまで広げ、取りこぼしを減らすためにもう1周見る
+    near(x, y, k) {
+      const [qx, qy] = center(x, y), out = [], want = Math.min(k, list.length);
+      let stop = -1;
+      for (let r = 0; r <= maxR; r++) {
+        ring(qx, qy, r, (j) => out.push(j));
+        if (stop < 0 && out.length >= want) stop = r + 1;
+        if (stop >= 0 && r >= stop) break;
+      }
+      return out;
+    },
+    // いちばん近い点（見つけた点より近い点が入りうる周までは見る）
+    nearest(x, y) {
+      const [qx, qy] = center(x, y);
+      let best = -1, bd = Infinity;
+      for (let r = 0; r <= maxR; r++) {
+        if (best >= 0 && (r - 1) * cs > Math.sqrt(bd)) break;
+        ring(qx, qy, r, (j) => { const d = (list[j].x - x) ** 2 + (list[j].y - y) ** 2; if (d < bd) { bd = d; best = j; } });
+      }
+      return best < 0 ? null : list[best];
+    },
+  };
 }
 const groupByColor = (list) => { const m = new Map(); for (const p of list) (m.get(p.c) || m.set(p.c, []).get(p.c)).push(p); return m; };
 
@@ -770,8 +814,9 @@ function buildPlan(pxA, pxB) {
     }
     if (P.extras === "merge") {
       // 余った画素: 消える側は近くの画素へ寄っていき、増える側は近くの画素から出てくる
-      for (const p of LA) { const q = nearest(p, mB.get(p.c) || G.B, o); mv(p, q, 1); }
-      for (const q of LB) { const p = nearest(q, mA.get(q.c) || G.A, { x: -o.x, y: -o.y }); mv(p, q, 2); }
+      const grids = new Map(), gridOf = (list) => grids.get(list) || grids.set(list, pointGrid(list)).get(list);
+      for (const p of LA) { const q = gridOf(mB.get(p.c) || G.B).nearest(p.x + o.x, p.y + o.y); mv(p, q, 1); }
+      for (const q of LB) { const p = gridOf(mA.get(q.c) || G.A).nearest(q.x - o.x, q.y - o.y); mv(p, q, 2); }
     } else {
       for (const p of LA) mv(p, { x: p.x + o.x, y: p.y + o.y, c: p.c, e: p.e }, 1);
       for (const q of LB) mv({ x: q.x - o.x, y: q.y - o.y, c: q.c, e: q.e }, q, 2);
@@ -861,7 +906,8 @@ function segEnds(i) { return [S.keys[i], S.keys[(i + 1) % S.keys.length]]; }
 function generate(keepEdited) {
   hideBanner();
   const keep = new Map();
-  if (keepEdited) for (const f of S.frames) if (f.kind === "tween" && f.edited) keep.set(f.tag, f);
+  // 大きさの違うコマは残せない（念のため）
+  if (keepEdited) for (const f of S.frames) if (f.kind === "tween" && f.edited && f.px.length === S.W * S.H) keep.set(f.tag, f);
   const selected = S.frames[S.sel];
   const frames = [];
   S.keys.forEach((k, i) => {
@@ -922,7 +968,7 @@ function renderKeyList() {
     const mk = (txt, title, fn, dis) => { const b = document.createElement("button"); b.type = "button"; b.className = "btn btn-sm btn-ghost"; b.textContent = txt; b.title = title; b.disabled = !!dis; b.onclick = fn; row.append(b); };
     mk("↑", "前へ", () => moveKey(i, -1), i === 0);
     mk("↓", "後ろへ", () => moveKey(i, 1), i === S.keys.length - 1);
-    mk("×", "このキー絵を外す", () => { S.keys.splice(i, 1); if (!S.keys.length) { S.frames = []; S.W = S.H = 0; } normalizeKeys(); afterKeysChanged(); });
+    mk("×", "このキー絵を外す", () => { S.keys.splice(i, 1); if (!S.keys.length) { S.frames = []; S.W = S.H = 0; } afterKeysChanged(normalizeKeys()); });
     box.append(row);
   });
 }
@@ -969,7 +1015,7 @@ function updateTimelineItem(i) {
   d.lastChild.innerHTML = (f.edited ? `<span class="ed">✎</span> ` : "") + f.label;
 }
 function selectFrame(i) {
-  if (!S.frames.length) return;
+  if (!S.frames.length || drag) return; // ドラッグ中はコマを替えない
   commitFloat();
   S.sel = (i + S.frames.length) % S.frames.length;
   S.selRect = null;
@@ -1043,8 +1089,11 @@ function cellAt(e) {
   return { x: Math.floor((e.clientX - r.left) / r.width * S.W), y: Math.floor((e.clientY - r.top) / r.height * S.H) };
 }
 const inside = (p) => p.x >= 0 && p.y >= 0 && p.x < S.W && p.y < S.H;
-function pushUndo(f) { f.undo.push(f.px.slice()); if (f.undo.length > 60) f.undo.shift(); f.redo = []; }
-function afterEdit(f) {
+function pushUndo(f) { f.undo.push(f.px.slice()); if (f.undo.length > 60) f.undo.shift(); f.redoBak = f.redo; f.redo = []; }
+// 操作のあとに呼ぶ。何も変わらなかった操作（同じ色での塗りつぶしなど）は履歴から外し、手直しの印も付けない
+function afterEdit(f, fromUndo) {
+  const last = f.undo[f.undo.length - 1];
+  if (!fromUndo && last && last.every((c, i) => c === f.px[i])) { f.undo.pop(); f.redo = f.redoBak || []; }
   if (f.kind === "tween") f.edited = f.undo.length > 0;
   updateTimelineItem(S.sel);
   drawEditor();
@@ -1168,7 +1217,7 @@ function undo(redo) {
   if (!from.length) return;
   to.push(f.px.slice()); f.px.set(from.pop());
   S.selRect = null;
-  afterEdit(f);
+  afterEdit(f, true);
 }
 $("btnUndo").onclick = () => undo(false);
 $("btnRedo").onclick = () => undo(true);
@@ -1176,7 +1225,7 @@ $("btnRedo").onclick = () => undo(true);
 // キー操作（入力欄にフォーカスがあるときは使わない）
 document.addEventListener("keydown", (e) => {
   const tag = (e.target && e.target.tagName) || "";
-  if (/INPUT|SELECT|TEXTAREA/.test(tag)) return;
+  if (/INPUT|SELECT|TEXTAREA/.test(tag) || drag) return; // ドラッグ中のキーは無視する
   const k = e.key.toLowerCase();
   if ((e.ctrlKey || e.metaKey) && k === "z") { e.preventDefault(); undo(e.shiftKey); return; }
   if ((e.ctrlKey || e.metaKey) && k === "y") { e.preventDefault(); undo(true); return; }
@@ -1341,8 +1390,10 @@ async function encodeAPNG(list, w, h, delays) {
   return new Blob(parts, { type: "image/png" });
 }
 function animFrames() {
-  const s = +P.scale, order = playOrder();
-  return { list: order.map((i) => scaled(S.frames[i].px, s)), delays: order.map((i) => durOf(S.frames[i])), w: S.W * s, h: S.H * s };
+  // 往復でも同じコマは1回だけ拡大する（大きな倍率でメモリを使いすぎないように）
+  const s = +P.scale, order = playOrder(), cache = new Map();
+  const get = (i) => cache.get(i) || cache.set(i, scaled(S.frames[i].px, s)).get(i);
+  return { list: order.map(get), delays: order.map((i) => durOf(S.frames[i])), w: S.W * s, h: S.H * s };
 }
 $("btnSheet").onclick = () => { flushGenerate(); if (S.frames.length) saveSheet(); };
 $("btnGif").onclick = () => {
@@ -1380,11 +1431,10 @@ function sampleSlime(cx, cy, rx, ry) {
   return img;
 }
 function loadSample() {
-  S.keys = []; S.segs = []; S.frames = []; S.baseName = "sample_slime";
+  S.keys = []; S.segs = []; S.segMemo = new Map(); S.frames = []; S.baseName = "sample_slime";
   [["待機", 16, 23, 9, 7], ["つぶれ", 16, 26.5, 11.5, 4], ["跳ね上がり", 16, 13, 7, 10]].forEach(([nm, ...a]) =>
     S.keys.push({ id: nextKeyId++, name: "見本_" + nm, raw: sampleSlime(...a), px: null, frame: null }));
-  normalizeKeys();
-  afterKeysChanged();
+  afterKeysChanged(normalizeKeys());
 }
 $("btnSample").onclick = loadSample;
 
@@ -1431,14 +1481,17 @@ for (const k of Object.keys(PREF_DEFAULTS)) {
 function applyEffect(kind) {
   if (kind === "gen") requestGenerate();
   else if (kind === "segs") { ensureSegs(); renderSegList(); requestGenerate(); }
-  else if (kind === "keys") { if (S.keys.length) { normalizeKeys(true); afterKeysChanged(); } }
+  else if (kind === "keys") { if (S.keys.length) afterKeysChanged(normalizeKeys(true)); }
   else if (kind === "draw") drawEditor();
   else if (kind === "pv") restartPreview();
 }
 $("btnApplyAll").onclick = () => { S.segs.forEach((s) => { s.n = P.n; s.ease = P.ease; }); renderSegList(); requestGenerate(); };
 $("btnResetPrefs").onclick = () => {
+  const before = P.anchor + "/" + P.bgMode;
   applyPrefs(PREF_DEFAULTS); IT.store.remove(PREFS_KEY);
-  ensureSegs(); renderSegList(); drawEditor(); requestGenerate();
+  if (S.keys.length && before !== P.anchor + "/" + P.bgMode) afterKeysChanged(normalizeKeys(true));
+  else { ensureSegs(); renderSegList(); requestGenerate(); }
+  drawEditor(); restartPreview();
   toast("設定をリセットしました");
 };
 { const saved = IT.store.get(PREFS_KEY); applyPrefs(saved && typeof saved === "object" ? saved : {}); }
