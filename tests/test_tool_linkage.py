@@ -164,7 +164,7 @@ def test_polish_to_upscaler(browser: Browser, base_url: str):
         up.wait_for_function("state.name !== 'sample'", timeout=15_000)
         assert up.evaluate("state.name") == name.removesuffix(".png")
         assert up.evaluate("[state.frame.on, state.frame.cols, state.frame.rows]") == [True, cols, rows]
-        up.wait_for_function("state.results[0]", timeout=15_000)
+        up.wait_for_function("document.getElementById('busy').hidden && state.results[0]", timeout=15_000)
         saved, data = _saved(up, "PNGを保存")
         assert saved.endswith(f"_{cols}x{rows}.png"), saved
         assert data.startswith(b"\x89PNG")
@@ -217,6 +217,16 @@ def test_inbetween_splits_sheet_by_file_name(browser: Browser, base_url: str):
             await loadFiles([new File([b], 'walk_3x1.png', { type: 'image/png' })], false);
         }""")
         assert page.evaluate("[S.keys.length, S.W, S.H, S.baseName]") == [3, 16, 16, "walk"]
+        # 分割は名前を読んだその1枚だけ。あとから読む名前に列x行の無い1枚絵は切らない
+        assert page.evaluate("document.getElementById('splitOn').checked") is False
+        page.evaluate("""async () => {
+            const c = document.createElement('canvas'); c.width = 48; c.height = 16;
+            c.getContext('2d').fillRect(2, 2, 40, 10);
+            await loadFiles([new File([await IT.canvasToBlob(c)], 'hero.png', { type: 'image/png' })], false);
+        }""")
+        assert page.evaluate("[S.keys.length, S.W, S.H]") == [1, 48, 16]
+        # コマの大きさを表す名前(割ると 1 コマが小さすぎる)は分割数として読まない
+        assert page.evaluate("[gridOfName('tree_32x32.png', 32, 32), gridOfName('a_3x1_v2.png', 48, 16), gridOfName('a_3x1.png', 48, 16)]") == [None, None, [3, 1]]
         assert problems == [], "\n".join(problems)
     finally:
         context.close()
