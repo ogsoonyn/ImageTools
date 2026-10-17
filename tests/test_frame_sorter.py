@@ -211,8 +211,13 @@ def test_file_name_has_grid_suffix(browser: Browser, base_url: str):
         cell = next(iter(data["frames"].values()))["frame"]
         assert (data["meta"]["size"]["w"], data["meta"]["size"]["h"]) == (8 * cell["w"], 4 * cell["h"])
         expect(page.locator("#pngPreview")).to_have_text("fx_8x4.png")
+        page.fill("#baseName", "walk_4x4_sheet")  # 名前の途中の表記も Anim-Editor に読まれるので消す
+        expect(page.locator("#pngPreview")).to_have_text("walk_sheet_8x4.png")
         page.select_option("#cellMode", "group")
-        expect(page.locator("#pngPreview")).to_have_text("fx.png")
+        expect(page.locator("#pngPreview")).to_have_text("walk_sheet.png")
+        # 列が64を超える格子は Anim-Editor が読めないので付けない
+        wide = page.evaluate("(() => { const k = layout; layout = { W: 65 * 10, H: 10, uniform: [10, 10] }; const n = pngName(); layout = k; return n; })()")
+        assert wide == "walk_sheet.png"
         assert errors == []
     finally:
         page.context.close()
