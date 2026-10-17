@@ -135,3 +135,88 @@ def test_common_js_is_identical():
     base = blocks["tool-template.html"]
     assert "openIn" in base and "receive" in base
     assert [n for n, b in blocks.items() if b != base] == []
+
+
+def _open_tool(browser: Browser, base_url: str, path: str, ready: str):
+    context = _new_context(browser)
+    page = context.new_page()
+    problems: list[str] = []
+    _watch(page, problems)
+    page.goto(f"{base_url}/{path}", wait_until="load")
+    page.wait_for_function(ready, timeout=10_000)
+    return context, page, problems
+
+
+def _popup(page: Page, label: str, problems: list[str]) -> Page:
+    page.context.on("page", lambda p: _watch(p, problems))
+    with page.context.expect_page(timeout=10_000) as info:
+        page.get_by_role("button", name=label, exact=True).click()
+    return info.value
+
+
+def test_polish_to_upscaler(browser: Browser, base_url: str):
+    """仕上げ → 拡大: シート全体が渡り、ファイル名の列x行でコマごとの拡大になり、保存名にも列x行が残る。"""
+    context, page, problems = _open_tool(browser, base_url, "tools/sprite-polish.html", "typeof doc !== 'undefined' && doc && isSample")
+    try:
+        cols, rows = page.evaluate("(() => { const l = layoutOf(exportSets()[0]); return [l.cols, l.rows]; })()")
+        name = page.evaluate("pngName()")
+        up = _popup(page, "拡大ツールで開く", problems)
+        up.wait_for_function("state.name !== 'sample'", timeout=15_000)
+        assert up.evaluate("state.name") == name.removesuffix(".png")
+        assert up.evaluate("[state.frame.on, state.frame.cols, state.frame.rows]") == [True, cols, rows]
+        up.wait_for_function("state.results[0]", timeout=15_000)
+        saved, data = _saved(up, "PNGを保存")
+        assert saved.endswith(f"_{cols}x{rows}.png"), saved
+        assert data.startswith(b"\x89PNG")
+        assert problems == [], "\n".join(problems)
+    finally:
+        context.close()
+
+
+def test_polish_to_inbetween(browser: Browser, base_url: str):
+    """仕上げ → 中割り: 選んだコマのアクションのコマがキー絵として順に入る。"""
+    context, page, problems = _open_tool(browser, base_url, "tools/sprite-polish.html", "typeof doc !== 'undefined' && doc && isSample")
+    try:
+        act, n = page.evaluate("(() => { const a = doc.frames[cur].tag; return [a, doc.frames.filter((f) => f.tag === a).length]; })()")
+        ib = _popup(page, "中割りツールで開く", problems)
+        ib.wait_for_function("S.baseName !== 'sample_slime'", timeout=15_000)
+        assert ib.evaluate("S.keys.length") == n
+        names = ib.evaluate("S.keys.map((k) => k.name)")
+        assert names == sorted(names) and names[0].endswith("_" + "1".zfill(len(str(n))))
+        assert act in ib.evaluate("S.baseName")
+        assert problems == [], "\n".join(problems)
+    finally:
+        context.close()
+
+
+def test_inbetween_to_polish(browser: Browser, base_url: str):
+    """中割り → 仕上げ: できたコマが1アクションとして、表示時間つきで入る。"""
+    context, page, problems = _open_tool(browser, base_url, "tools/pixel-inbetween.html", "S.frames.length > 0")
+    try:
+        page.wait_for_function("!document.getElementById('btnPolish').disabled", timeout=10_000)
+        n, base, key_ms = page.evaluate("[S.frames.length, S.baseName, P.keyMs]")
+        polish = _popup(page, "仕上げツールで開く", problems)
+        polish.wait_for_function("typeof doc !== 'undefined' && doc && !isSample", timeout=15_000)
+        assert polish.evaluate("doc.frames.length") == n
+        assert polish.evaluate("actions()") == [base]
+        assert polish.evaluate("doc.frames[0].dur") == key_ms
+        assert problems == [], "\n".join(problems)
+    finally:
+        context.close()
+
+
+def test_inbetween_splits_sheet_by_file_name(browser: Browser, base_url: str):
+    """中割り: 1枚だけ読んだ画像の名前の最後に列x行があれば、その数で分割する。"""
+    context, page, problems = _open_tool(browser, base_url, "tools/pixel-inbetween.html", "S.frames.length > 0")
+    try:
+        page.evaluate("""async () => {
+            const c = document.createElement('canvas'); c.width = 48; c.height = 16;
+            const x = c.getContext('2d'); x.fillStyle = '#c33';
+            for (let i = 0; i < 3; i++) x.fillRect(i * 16 + 4, 4 + i, 8, 8);
+            const b = await IT.canvasToBlob(c);
+            await loadFiles([new File([b], 'walk_3x1.png', { type: 'image/png' })], false);
+        }""")
+        assert page.evaluate("[S.keys.length, S.W, S.H, S.baseName]") == [3, 16, 16, "walk"]
+        assert problems == [], "\n".join(problems)
+    finally:
+        context.close()

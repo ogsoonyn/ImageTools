@@ -160,6 +160,7 @@ input[type=color]{width:36px;height:28px;border:1px solid var(--line);border-rad
       <button class="btn btn-primary" type="button" id="btnSheet" disabled>PNGを保存</button>
       <button class="btn" type="button" id="btnGif" disabled>GIFを保存</button>
       <button class="btn" type="button" id="btnApng" disabled>APNGを保存</button>
+      <button class="btn" type="button" id="btnPolish" disabled title="保存せずに、中割りしたシート（等倍・表示時間つき）をシート仕上げツールの新しいタブで開きます">仕上げツールで開く</button>
       <button class="btn btn-ghost" type="button" id="btnResetPrefs" title="補完・表示・再生・出力の設定を初期値に戻します（読み込んだ絵と手直しはそのまま）">設定をリセット</button>
       <button class="btn btn-ghost" type="button" id="themeToggle">テーマ: 自動</button>
     </div>
@@ -558,6 +559,12 @@ function cropImageData(img, sx, sy, w, h) {
 }
 const natural = (a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" });
 
+function gridOfName(name) {
+  const m = [...String(name).matchAll(/(?<!\d)(\d+)\s*[xX×]\s*(\d+)(?!\d)/g)].pop();
+  if (!m) return null;
+  const c = +m[1], r = +m[2];
+  return c >= 1 && r >= 1 && c <= 64 && r <= 64 && c * r > 1 ? [c, r] : null;
+}
 async function loadFiles(files, append) {
   files = [...files].sort(natural);
   const raws = [];
@@ -565,6 +572,9 @@ async function loadFiles(files, append) {
     for (const f of files) {
       const img = await fileToImageData(f);
       const nm = f.name.replace(/\.[^.]+$/, "");
+      // 1 枚だけで、ファイル名の最後に「列x行」があればシートとして分割する
+      const g = files.length === 1 && gridOfName(f.name);
+      if (g) { $("splitOn").checked = true; $("splitCols").value = g[0]; $("splitRows").value = g[1]; }
       if ($("splitOn").checked && files.length === 1) {
         const cols = clampInt($("splitCols").value, 1, 64), rows = clampInt($("splitRows").value, 1, 64);
         const cw = Math.floor(img.width / cols), ch = Math.floor(img.height / rows);
@@ -579,7 +589,8 @@ async function loadFiles(files, append) {
   // 中身が空のコマ（分割したシートの余り）は捨てる
   const kept = raws.filter((r) => { const d = r.img.data; for (let i = 3; i < d.length; i += 4) if (d[i] >= 128) return true; return false; });
   if (!kept.length) { toast("絵のある画像が見つかりませんでした"); return; }
-  if (!append) { S.keys = []; S.segs = []; S.segMemo = new Map(); S.frames = []; S.baseName = files[0].name.replace(/\.[^.]+$/, "") || "inbetween"; }
+  // 名前の末尾の「列x行」や連番は外す（書き出すときに付け直す）
+  if (!append) { S.keys = []; S.segs = []; S.segMemo = new Map(); S.frames = []; S.baseName = files[0].name.replace(/\.[^.]+$/, "").replace(/[_\-\s]*(?<!\d)\d+\s*[xX×]\s*\d+(?!\d)/g, "").replace(files.length > 1 ? /[_\-\s]*\d+$/ : /$^/, "") || "inbetween"; }
   for (const r of kept) S.keys.push({ id: nextKeyId++, name: r.name, raw: r.img, px: null, frame: null });
   const change = normalizeKeys();
   if (S.keys.length < 2) toast("キー絵を2枚以上入れると中割りを作れます");
@@ -1073,7 +1084,7 @@ function refreshAll() {
   drawEditor();
   restartPreview();
   const ok = S.frames.length > 0;
-  ["btnSheet", "btnGif", "btnApng"].forEach((id) => ($(id).disabled = !ok));
+  ["btnSheet", "btnGif", "btnApng", "btnPolish"].forEach((id) => ($(id).disabled = !ok));
 }
 
 // ================= 手直し =================
@@ -1335,12 +1346,27 @@ function scaled(px, s) {
   for (let y = 0; y < H * s; y++) for (let x = 0; x < W * s; x++) out[y * W * s + x] = px[((y / s) | 0) * W + ((x / s) | 0)];
   return out;
 }
-function saveSheet() {
-  const s = +P.scale, n = S.frames.length, cols = Math.min(clampInt(P.cols, 1, 64), n), rows = Math.ceil(n / cols);
+function sheetOf(s) {
+  const n = S.frames.length, cols = Math.min(clampInt(P.cols, 1, 64), n), rows = Math.ceil(n / cols);
   const c = document.createElement("canvas"); c.width = cols * S.W * s; c.height = rows * S.H * s;
   const x = c.getContext("2d"); x.imageSmoothingEnabled = false;
   S.frames.forEach((f, i) => x.drawImage(pxCanvas(f.px), (i % cols) * S.W * s, Math.floor(i / cols) * S.H * s, S.W * s, S.H * s));
-  IT.canvasToBlob(c).then((b) => IT.saveFile(`${S.baseName}_inbetween${rows <= 64 ? `_${cols}x${rows}` : ""}.png`, b), () => toast("PNGを作成できませんでした"));
+  return { c, cols, rows, name: `${S.baseName}_inbetween${rows <= 64 ? `_${cols}x${rows}` : ""}.png` };
+}
+function saveSheet() {
+  const sh = sheetOf(+P.scale);
+  IT.canvasToBlob(sh.c).then((b) => IT.saveFile(sh.name, b), () => toast("PNGを作成できませんでした"));
+}
+// 仕上げツールへは等倍のシートと、表示時間・アクション名を入れた Aseprite 互換 JSON（Array）を渡す
+function openInPolish() {
+  const sh = sheetOf(1), W = S.W, H = S.H, n = S.frames.length;
+  const frames = S.frames.map((f, i) => ({
+    filename: `${S.baseName} ${i}.png`, frame: { x: (i % sh.cols) * W, y: Math.floor(i / sh.cols) * H, w: W, h: H },
+    rotated: false, trimmed: false, spriteSourceSize: { x: 0, y: 0, w: W, h: H }, sourceSize: { w: W, h: H }, duration: durOf(f),
+  }));
+  const json = { frames, meta: { app: "https://www.aseprite.org/", version: "1.3", image: sh.name, format: "RGBA8888", size: { w: sh.c.width, h: sh.c.height }, scale: "1",
+    frameTags: [{ name: S.baseName, from: 0, to: n - 1, direction: "forward", color: "#000000ff" }], layers: [], slices: [] } };
+  IT.openIn("sprite-polish", IT.canvasToBlob(sh.c).then((b) => [new File([b], sh.name, { type: "image/png" }), new File([JSON.stringify(json)], sh.name.replace(/\.png$/, ".json"), { type: "application/json" })]));
 }
 
 // GIF（透明は 0 番。色が 255 を超えたら近い色にまとめる）
@@ -1441,6 +1467,7 @@ function animFrames() {
   return { list: order.map(get), delays: order.map((i) => durOf(S.frames[i])), w: S.W * s, h: S.H * s };
 }
 $("btnSheet").onclick = () => { flushGenerate(); if (S.frames.length) saveSheet(); };
+$("btnPolish").onclick = () => { flushGenerate(); if (S.frames.length) openInPolish(); };
 $("btnGif").onclick = () => {
   flushGenerate();
   if (!S.frames.length) return;
@@ -1543,6 +1570,8 @@ $("btnResetPrefs").onclick = () => {
 
 setTool("pen");
 loadSample();
+// シート仕上げの「中割りツールで開く」から開かれたときは、渡されたコマをキー絵にする（届くまではサンプルのまま）
+IT.receive((files) => loadFiles(files, false));
 </script>
 </body>
 </html>
