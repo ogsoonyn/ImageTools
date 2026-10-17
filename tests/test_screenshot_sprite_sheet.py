@@ -89,6 +89,11 @@ def test_sample_crop_keyout_align_and_nudge(browser: Browser, base_url: str):
     assert transparent > 0.3
 
     # 下端揃え + 絵に合わせて詰める(余白 3px)で、全セルの絵の下端が揃う
+    # 既定(トリミング範囲のまま + 下端): セルは範囲の大きさで、揃えたまとまりはその中央
+    g = page.evaluate("groupBox(frames.map((f) => f.cache), effectiveCrop(), alignOpts(true))")
+    assert page.evaluate("[layout.cw, layout.ch]") == [crop["w"], crop["h"]]
+    assert set(_cell_bottom_gaps(page)) == {crop["h"] - g["bh"] - (crop["h"] - g["bh"]) // 2}
+
     page.click("#anchorSeg button[data-anchor='bottom']")
     page.select_option("#cellMode", "fit")
     page.fill("#cellPad", "3")
@@ -154,6 +159,11 @@ def test_settings_saved_restored_and_reset(browser: Browser, base_url: str):
     expect(page.locator("#anchor")).to_have_value("bottom")
     expect(page.locator("#cellMode")).to_have_value("crop")
     assert page.evaluate("(k) => localStorage.getItem(k)", PREFS_KEY) is None
+
+    # 旧形式(横・縦別々)の設定は近い揃え方に読み替える
+    page.evaluate("(k) => localStorage.setItem(k, JSON.stringify({ alignH: 'none', alignV: 'none' }))", PREFS_KEY)
+    page.reload()
+    expect(page.locator("#anchor")).to_have_value("none")
 
     # 壊れた値が保存されていても起動できる
     page.evaluate("(k) => localStorage.setItem(k, '{broken')", PREFS_KEY)

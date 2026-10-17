@@ -1241,7 +1241,18 @@ PREF_IDS.forEach((id) => $(id).addEventListener("change", () => { savePrefs(); r
 ["cols", "spacing", "margin", "scale", "duration", "baseName"].forEach((id) => $(id).addEventListener("input", scheduleRebuild));
 syncBgUi(); syncAlignUi();
 $("btnResetPrefs").addEventListener("click", () => { applyPrefs(PREF_DEFAULTS); IT.store.remove(PREFS_KEY); toast("設定をリセットしました"); });
-{ const saved = IT.store.get(PREFS_KEY); if (saved && typeof saved === "object") applyPrefs(saved); }
+{
+  const saved = IT.store.get(PREFS_KEY);
+  if (saved && typeof saved === "object") {
+    // 旧形式（横・縦を別々に指定）の設定は、近い揃え方に読み替える
+    if (!("anchor" in saved) && ("alignH" in saved || "alignV" in saved)) {
+      const h = saved.alignH, v = saved.alignV;
+      saved.anchor = h === "none" && v === "none" ? "none"
+        : v === "bottom" || v === "top" ? v : h === "left" || h === "right" ? h : "center";
+    }
+    applyPrefs(saved);
+  }
+}
 
 refreshAll();
 </script>
