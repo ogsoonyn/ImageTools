@@ -75,9 +75,9 @@ def test_sample_crop_keyout_align_and_nudge(browser: Browser, base_url: str):
     assert 0 < crop["w"] < 480 and 0 < crop["h"] < 270
 
     # 透過しないうちは位置の揃えは使えない
-    expect(page.locator("#alignH")).to_be_disabled()
+    expect(page.locator("#anchorSeg button[data-anchor='left']")).to_be_disabled()
     page.select_option("#bgMode", "flood")
-    expect(page.locator("#alignH")).to_be_enabled()
+    expect(page.locator("#anchorSeg button[data-anchor='left']")).to_be_enabled()
     transparent = page.evaluate(
         """() => {
             const c = document.getElementById('sheet');
@@ -88,12 +88,39 @@ def test_sample_crop_keyout_align_and_nudge(browser: Browser, base_url: str):
     )
     assert transparent > 0.3
 
-    # 下揃え + 下端から 3px で、全セルの絵の下端が揃う
-    page.select_option("#alignV", "bottom")
-    page.fill("#padY", "3")
-    page.dispatch_event("#padY", "change")
+    # 下端揃え + 絵に合わせて詰める(余白 3px)で、全セルの絵の下端が揃う
+    # 既定(トリミング範囲のまま + 下端): セルは範囲の大きさで、揃えたまとまりはその中央
+    g = page.evaluate("groupBox(frames.map((f) => f.cache), effectiveCrop(), alignOpts(true))")
+    assert page.evaluate("[layout.cw, layout.ch]") == [crop["w"], crop["h"]]
+    assert set(_cell_bottom_gaps(page)) == {crop["h"] - g["bh"] - (crop["h"] - g["bh"]) // 2}
+
+    page.click("#anchorSeg button[data-anchor='bottom']")
+    page.select_option("#cellMode", "fit")
+    page.fill("#cellPad", "3")
+    page.dispatch_event("#cellPad", "change")
     page.wait_for_timeout(100)
     assert set(_cell_bottom_gaps(page)) == {3}
+    # 揃えたまとまりはセルの中央に来る: 一番大きい絵の上下左右に 3px ずつ余白が付く
+    g = page.evaluate("groupBox(frames.map((f) => f.cache), effectiveCrop(), alignOpts(true))")
+    assert (g["bx"], g["by"], g["w"] - g["bw"], g["h"] - g["bh"]) == (3, 3, 6, 6)
+    assert page.evaluate("[layout.cw, layout.ch]") == [g["w"], g["h"]]
+
+    # 左端: 全コマの絵の左端がそろう(下端とは別の向き)
+    page.click("#anchorSeg button[data-anchor='left']")
+    page.wait_for_timeout(100)
+    lefts = page.evaluate(
+        """() => {
+            const c = document.getElementById('sheet');
+            const x = c.getContext('2d', { willReadFrequently: true });
+            return layout.rects.map((r) => {
+                const d = x.getImageData(r.x, r.y, r.w, r.h).data;
+                for (let i = 0; i < r.w; i++) for (let y = 0; y < r.h; y++) if (d[(y * r.w + i) * 4 + 3] > 16) return i;
+                return -1;
+            });
+        }"""
+    )
+    assert set(lefts) == {3}
+    page.click("#anchorSeg button[data-anchor='bottom']")
 
     # 微調整: 一時停止中にアニメ窓で矢印キーを押すと選択中のコマだけずれる
     page.click(".thumb >> nth=2")
@@ -119,18 +146,24 @@ def test_settings_saved_restored_and_reset(browser: Browser, base_url: str):
     page.fill("#cols", "4")
     page.dispatch_event("#cols", "change")
     page.select_option("#bgMode", "all")
-    page.select_option("#alignH", "left")
+    page.click("#anchorSeg button[data-anchor='left']")
     page.reload()
     expect(page.locator("#cols")).to_have_value("4")
     expect(page.locator("#bgMode")).to_have_value("all")
-    expect(page.locator("#alignH")).to_have_value("left")
+    expect(page.locator("#anchor")).to_have_value("left")
+    expect(page.locator("#anchorSeg button[data-anchor='left']")).to_have_attribute("aria-pressed", "true")
 
     page.click("#btnResetPrefs")
     expect(page.locator("#cols")).to_have_value("0")
     expect(page.locator("#bgMode")).to_have_value("none")
-    expect(page.locator("#alignH")).to_have_value("center")
-    expect(page.locator("#alignV")).to_have_value("bottom")
+    expect(page.locator("#anchor")).to_have_value("bottom")
+    expect(page.locator("#cellMode")).to_have_value("crop")
     assert page.evaluate("(k) => localStorage.getItem(k)", PREFS_KEY) is None
+
+    # 旧形式(横・縦別々)の設定は近い揃え方に読み替える
+    page.evaluate("(k) => localStorage.setItem(k, JSON.stringify({ alignH: 'none', alignV: 'none' }))", PREFS_KEY)
+    page.reload()
+    expect(page.locator("#anchor")).to_have_value("none")
 
     # 壊れた値が保存されていても起動できる
     page.evaluate("(k) => localStorage.setItem(k, '{broken')", PREFS_KEY)
