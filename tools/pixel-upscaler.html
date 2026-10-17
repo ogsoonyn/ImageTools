@@ -994,14 +994,28 @@ function setImage(img, name, isSample) {
   const z = Math.max(1, Math.min(8, Math.floor(240 / Math.max(img.w, img.h))));
   cv.style.width = img.w * z + "px";
   $("srcInfo").textContent = `${name}  ${img.w}×${img.h}px  ${a.palette.length}色`;
-  if (isSample) { state.frame = { on: true, cols: 2, rows: 1 }; }
-  else state.frame = { on: false, cols: 1, rows: 1 };
+  const g = isSample ? [2, 1] : gridOfName(name, img.w, img.h);
+  state.frame = g && g[0] <= img.w && g[1] <= img.h ? { on: true, cols: g[0], rows: g[1] } : { on: false, cols: 1, rows: 1 };
   syncFrameUi();
   renderSwatches();
   schedule();
 }
 function toImageData({ px, w, h }) {
   return new ImageData(new Uint8ClampedArray(px.buffer.slice(px.byteOffset, px.byteOffset + px.byteLength)), w, h);
+}
+// ファイル名の最後の「数字x数字」を列x行として読む（各 1〜64。ImageTools のシート出力は末尾に _列x行 が付く）
+function gridOfName(name, w, h) {
+  // 拡張子を除いた名前の末尾だけを見る。割り切れて 1 コマが 4 ドット以上のときだけ（「tree_32x32」のようなコマの大きさの名前を避ける）
+  const m = String(name).replace(/\.[a-z0-9]+$/i, "").match(/(?<!\d)(\d+)\s*[xX×]\s*(\d+)$/);
+  if (!m) return null;
+  const c = +m[1], r = +m[2];
+  return c >= 1 && r >= 1 && c <= 64 && r <= 64 && c * r > 1 && w % c === 0 && h % r === 0 && w / c >= 4 && h / r >= 4 ? [c, r] : null;
+}
+const stripGrid = (s) => s.replace(/[_\-\s]*(?<!\d)\d+\s*[xX×]\s*\d+$/, "");
+// 保存名の末尾にも _列x行 を残す（コマごとに拡大したときだけ。分割数を読むツールがそのまま使えるように）
+function gridSuffix() {
+  const f = state.frame;
+  return f.on && f.cols <= 64 && f.rows <= 64 ? `_${f.cols}x${f.rows}` : "";
 }
 function loadFile(file) {
   const url = URL.createObjectURL(file);
@@ -1016,6 +1030,7 @@ function loadFile(file) {
     ctx.drawImage(im, 0, 0);
     const d = ctx.getImageData(0, 0, w, h).data;
     setImage({ px: new Uint32Array(d.buffer.slice(0)), w, h }, file.name.replace(/\.[^.]+$/, ""), false);
+    if (state.frame.on) IT.toast(`ファイル名から ${state.frame.cols}×${state.frame.rows} コマのシートとして読みました`);
   };
   im.onerror = () => { URL.revokeObjectURL(url); IT.toast("画像を読み込めませんでした。PNG などの画像ファイルを選んでください"); };
   im.src = url;
@@ -1222,7 +1237,9 @@ async function savePane(i) {
   const r = state.results[i];
   if (!r) return;
   const p = prefs.panes[i], cv = $("c" + i);
-  const name = `${state.name}_x${prefs.scale}_${p.method}${p.thin ? "_thin" : ""}.png`;
+  // 列x行は付け直すので、コマごとに拡大したときだけ元の名前から外す
+  const stem = (gridSuffix() && stripGrid(state.name)) || state.name;
+  const name = `${stem}_x${prefs.scale}_${p.method}${p.thin ? "_thin" : ""}${gridSuffix()}.png`;
   try { await IT.saveFile(name, await IT.canvasToBlob(cv)); }
   catch (e) { IT.toast("PNG を作れませんでした"); }
 }
@@ -1239,4 +1256,6 @@ function syncAll() {
 
 syncAll();
 setImage(makeSample(), "sample", true);
+// シート仕上げの「拡大ツールで開く」から開かれたときは、渡されたシートを読む（届くまではサンプルのまま）
+IT.receive((files) => loadFile(files[0]));
 </script>

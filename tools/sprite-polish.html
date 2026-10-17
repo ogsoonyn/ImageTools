@@ -230,6 +230,10 @@ h1{text-wrap:balance}
         <p class="hint mono" id="outInfo"></p>
         <p class="hint mono" id="pngPreview"></p>
         <p class="hint">保存は右上の「PNGを保存」「JSONを保存」から。</p>
+        <div class="row">
+          <button class="btn btn-sm" type="button" id="btnToUpscale" disabled title="保存せずに、書き出すシート（1枚目）をドット絵拡大ツールの新しいタブで開きます。コマごとに拡大する設定になります">拡大ツールで開く</button>
+          <button class="btn btn-sm" type="button" id="btnToInbetween" disabled title="保存せずに、選んだコマのアクションのコマ（いま表示している差分つき）をキー絵として中割りツールの新しいタブで開きます">中割りツールで開く</button>
+        </div>
         <p class="hint">JSON は Aseprite 互換（frames + frameTags）。アクションは frameTags に、表示時間は duration に入ります。</p>
       </section>
       <section class="flex flex-col gap-2">
@@ -1258,7 +1262,7 @@ function renderStrip() {
   strip.textContent = "";
   const n = doc ? doc.frames.length : 0;
   $("countBadge").textContent = n;
-  ["opLeft", "opRight", "opDup", "opEmpty", "opFlipH", "opFlipV", "opDel", "btnTag", "btnNewAct", "btnAlign", "btnPng", "btnJson"].forEach((id) => ($(id).disabled = !n));
+  ["opLeft", "opRight", "opDup", "opEmpty", "opFlipH", "opFlipV", "opDel", "btnTag", "btnNewAct", "btnAlign", "btnPng", "btnJson", "btnToUpscale", "btnToInbetween"].forEach((id) => ($(id).disabled = !n));
   $("btnSplit").disabled = !doc;
   if (!n) { const d = document.createElement("p"); d.className = "hint"; d.textContent = doc ? "コマがありません。分割を見直してください" : "シートを読み込むか、サンプルを読み込んでください"; strip.appendChild(d); return; }
   const s = Math.min(76 / doc.cw, 56 / doc.ch), k = s >= 2 ? Math.floor(s) : s; // 縦横比を保ったまま枠に収める
@@ -1536,6 +1540,24 @@ $("btnJson").addEventListener("click", async () => {
   if (float) stampFloat();
   for (const set of exportSets())
     if (!(await IT.saveFile(pngName(set).replace(/\.png$/, ".json"), new Blob([JSON.stringify(asepriteJson(set), null, 2)], { type: "application/json" })))) break;
+});
+
+// ---- ほかのツールで開く ----
+$("btnToUpscale").addEventListener("click", () => {
+  if (!doc || !doc.frames.length) return;
+  if (float) stampFloat();
+  const set = exportSets()[0], name = pngName(set);
+  IT.openIn("pixel-upscaler", IT.canvasToBlob(renderSheet(set)).then((b) => [new File([b], name, { type: "image/png" })]));
+});
+// 選んだコマのアクションの各コマを 1 枚ずつのキー絵として渡す（中割りツールはファイル名の順に並べる）
+$("btnToInbetween").addEventListener("click", () => {
+  if (!doc || !doc.frames.length) return;
+  if (float) stampFloat();
+  const act = doc.frames[cur].tag, list = doc.frames.filter((f) => f.tag === act);
+  const base = safeName(baseOf($("baseName").value.trim() + ".png") + "_" + act);
+  const width = String(list.length).length;
+  IT.openIn("pixel-inbetween", Promise.all(list.map((f, i) => IT.canvasToBlob(composeShown(f))
+    .then((b) => new File([b], base + "_" + String(i + 1).padStart(width, "0") + ".png", { type: "image/png" })))));
 });
 
 // ---- 表情差分 ----
