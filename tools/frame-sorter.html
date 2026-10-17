@@ -143,6 +143,10 @@ input[type=color]{width:36px;height:28px;border:1px solid var(--line);border-rad
 .kbd{font-family:var(--font-mono);font-size:11px;border:1px solid var(--line);border-radius:4px;padding:0 4px;color:var(--muted)}
 .anim-box{display:flex;justify-content:center;align-items:center;min-height:200px}
 #animView{image-rendering:pixelated;max-width:100%}
+/* 選択中のコマへの操作バー（画面下に固定）。表示中はトーストをその上に出す */
+.selbar{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(12px + env(safe-area-inset-bottom,0px));z-index:90;display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:center;background:var(--panel);border:1px solid var(--accent);border-radius:10px;padding:8px 12px;box-shadow:0 6px 24px rgba(0,0,0,.25);max-width:calc(100vw - 32px)}
+body.has-selbar .toast{bottom:calc(84px + env(safe-area-inset-bottom,0px))}
+body.has-selbar .wrap{padding-bottom:110px}
 </style>
 </head>
 <body>
@@ -234,12 +238,15 @@ input[type=color]{width:36px;height:28px;border:1px solid var(--line);border-rad
       <section class="flex flex-col gap-3">
         <h2 class="sec-title">シート配置</h2>
         <div class="field">
-          <label>基準点（セル内での揃え方）</label>
-          <div class="join" role="group" aria-label="基準点" id="anchorSeg">
-            <button class="btn btn-sm" type="button" data-anchor="center" aria-pressed="true">中心</button>
-            <button class="btn btn-sm" type="button" data-anchor="bottom" aria-pressed="false">足元（下中央）</button>
-            <button class="btn btn-sm" type="button" data-anchor="topleft" aria-pressed="false">左上</button>
+          <label>コマの揃え方</label>
+          <div class="join" role="group" aria-label="揃える端" id="anchorSeg">
+            <button class="btn btn-sm" type="button" data-anchor="bottom" aria-pressed="true">下端</button>
+            <button class="btn btn-sm" type="button" data-anchor="top" aria-pressed="false">上端</button>
+            <button class="btn btn-sm" type="button" data-anchor="left" aria-pressed="false">左端</button>
+            <button class="btn btn-sm" type="button" data-anchor="right" aria-pressed="false">右端</button>
+            <button class="btn btn-sm" type="button" data-anchor="center" aria-pressed="false">中央</button>
           </div>
+          <p class="hint">アニメの中でコマどうしを選んだ端に揃え（もう一方の向きは中央）、揃えたまとまり全体をセルの真ん中に置きます。「中央」は端に揃えず、上下左右とも中央に置きます。</p>
         </div>
         <div class="field">
           <label for="cellMode">セルサイズ</label>
@@ -301,7 +308,7 @@ input[type=color]{width:36px;height:28px;border:1px solid var(--line);border-rad
           </div>
           <button class="btn btn-sm" type="button" id="btnMerge" title="選択したコマを1コマにまとめる (M)">結合</button>
           <button class="btn btn-sm" type="button" id="btnDelete" title="選択したコマを消す (Delete)">削除</button>
-          <button class="btn btn-sm" type="button" id="btnNewGroup" title="選択したコマを新しいアニメに分ける (G)">新しいアニメへ</button>
+          <button class="btn btn-sm" type="button" id="btnNewGroup" title="選択したコマを新しいアニメに分ける (G)">新しいアニメに切り出す</button>
           <button class="btn btn-sm" type="button" id="btnUndo" title="元に戻す (Ctrl+Z)">元に戻す</button>
           <button class="btn btn-sm" type="button" id="btnRedo" title="やり直す (Ctrl+Shift+Z)">やり直す</button>
         </div>
@@ -356,6 +363,15 @@ input[type=color]{width:36px;height:28px;border:1px solid var(--line);border-rad
       </section>
     </main>
   </div>
+</div>
+
+<div class="selbar" id="selBar" hidden role="toolbar" aria-label="選択中のコマの操作">
+  <span class="lbl" id="selBarCount"></span>
+  <button class="btn btn-sm btn-primary" type="button" id="sbNewGroup">新しいアニメに切り出す</button>
+  <select class="select" id="sbMoveTo" aria-label="移動先のアニメ"></select>
+  <button class="btn btn-sm" type="button" id="sbMerge">1コマに結合</button>
+  <button class="btn btn-sm" type="button" id="sbDelete">削除</button>
+  <button class="btn btn-sm btn-ghost" type="button" id="sbClear">選択解除</button>
 </div>
 
 <!-- common:begin toast -->
@@ -526,7 +542,7 @@ const S = {
   fg: null, label: null, compCount: 0, dropped: 0,
   frames: new Map(), groups: [], nextId: 1, nextG: 1,
   sel: new Set(), activeG: null,
-  tool: 'select', det: 'color', bgout: 'clear', anchor: 'center',
+  tool: 'select', det: 'color', bgout: 'clear', anchor: 'bottom',
   undo: [], redo: [],
 };
 let layout = null;            // シート配置の計算結果
@@ -733,6 +749,7 @@ function newGroupFromSel() {
   removeIds(ids);
   const g = newGroup(ids);
   S.groups.splice(at + 1, 0, g); pruneGroups(); S.activeG = g.id; refresh();
+  toast(ids.length + ' コマを新しいアニメ「' + g.name + '」に切り出しました');
 }
 function moveIds(ids, gid, beforeId) {
   pushUndo();
@@ -814,11 +831,14 @@ function computeLayout() {
     const [cw, ch] = mode === 'group' ? sizeOf(g.ids) : uni;
     const n = g.ids.length, cols = maxCols > 0 ? Math.min(maxCols, n) : n;
     tags.push({ name: g.name, from: rects.length, to: rects.length + n - 1, color: g.color, cw, ch });
+    // アニメ内の最大のコマを囲む枠をセル中央に置き、各コマはその枠の中で選んだ端に揃える
+    const fs = g.ids.map(id => S.frames.get(id));
+    const bw = Math.max(...fs.map(f => f.w)), bh = Math.max(...fs.map(f => f.h));
     g.ids.forEach((id, i) => {
       const f = S.frames.get(id), cx = (i % cols) * cw, cy = y + Math.floor(i / cols) * ch;
-      let x, yy;
-      if (S.anchor === 'topleft') { x = cx + pad; yy = cy + pad; }
-      else { x = cx + Math.floor((cw - f.w) / 2); yy = S.anchor === 'bottom' ? cy + ch - pad - f.h : cy + Math.floor((ch - f.h) / 2); }
+      const bx = cx + Math.floor((cw - bw) / 2), by = cy + Math.floor((ch - bh) / 2), a = S.anchor;
+      const x = a === 'left' ? bx : a === 'right' ? bx + bw - f.w : bx + Math.floor((bw - f.w) / 2);
+      const yy = a === 'top' ? by : a === 'bottom' ? by + bh - f.h : by + Math.floor((bh - f.h) / 2);
       if (f.w > cw - pad * 2 || f.h > ch - pad * 2) overflow++;
       rects.push({ id, group: g, cell: { x: cx, y: cy, w: cw, h: ch }, x, y: yy });
     });
@@ -1132,7 +1152,24 @@ function refresh() {
 }
 function refreshLight() { fillAnimSelect(); renderGroups(); }
 function refreshSel() { drawOverlay(); refreshSelThumbs(); updateSelNote(); }
+$('sbNewGroup').onclick = newGroupFromSel; $('sbMerge').onclick = mergeSel; $('sbDelete').onclick = deleteSel;
+$('sbClear').onclick = () => { S.sel.clear(); refreshSel(); };
+$('sbMoveTo').addEventListener('change', (e) => {
+  const gid = +e.target.value; e.target.value = '';
+  if (gid && S.sel.size) { moveIds(orderedSel(), gid, null); S.activeG = gid; refresh(); toast('選択したコマを移動しました'); }
+});
+function updateSelBar() {
+  const n = S.sel.size, bar = $('selBar');
+  bar.hidden = n === 0; document.body.classList.toggle('has-selbar', n > 0);
+  if (!n) return;
+  $('selBarCount').textContent = n + ' コマ選択中';
+  $('sbMerge').disabled = n < 2;
+  const sel = $('sbMoveTo'); sel.textContent = '';
+  const o0 = document.createElement('option'); o0.value = ''; o0.textContent = '既存のアニメへ移動…'; sel.append(o0);
+  S.groups.forEach((g, i) => { const o = document.createElement('option'); o.value = g.id; o.textContent = (i + 1) + '. ' + g.name + ' の末尾へ'; sel.append(o); });
+}
 function updateSelNote() {
+  updateSelBar();
   const n = S.sel.size;
   $('btnMerge').disabled = n < 2; $('btnDelete').disabled = $('btnNewGroup').disabled = n < 1;
   $('btnUndo').disabled = !S.undo.length; $('btnRedo').disabled = !S.redo.length;
@@ -1140,7 +1177,7 @@ function updateSelNote() {
   if (!S.src) t = '画像を読み込むと、検出したコマの枠がここに表示されます。';
   else if (n === 0) t = S.frames.size + ' コマを検出' + (S.dropped ? '（小さすぎる塊 ' + S.dropped + ' 個は無視）' : '') + '。枠をクリックで選択、Shift/Ctrl で追加選択、空白をドラッグで範囲選択。';
   else if (n === 1) { const f = S.frames.get([...S.sel][0]); t = '1コマ選択中（' + f.w + '×' + f.h + '、位置 ' + f.x + ',' + f.y + '）。辺や角をドラッグで範囲を調整できます。'; }
-  else t = n + ' コマ選択中。「結合」で1コマに、「新しいアニメへ」で別のアニメに分けられます。';
+  else t = n + ' コマ選択中。画面下のバーから、新しいアニメへの切り出し・移動・結合・削除ができます。';
   $('selNote').textContent = t;
 }
 
