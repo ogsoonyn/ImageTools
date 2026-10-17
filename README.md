@@ -15,6 +15,7 @@
 | アイコン一括生成 | 1枚の元画像から favicon 一式(favicon.ico・apple-touch-icon・Android Chrome 用・maskable)、iOS(AppIcon 1024px)、Android(mipmap 各密度・Play ストア用)、Windows(.ico)、任意サイズのアイコンをまとめて作る。余白・角丸・背景色・縮小方式(なめらか / ドット絵向けニアレスト)を指定できる | PNG / JPG / WebP / SVG | ZIP(PNG・ICO・site.webmanifest・HTML スニペット・Contents.json)、または 1 枚ずつ PNG | [`tools/icon-generator.html`](tools/icon-generator.html) |
 | 揺れものアニメーター | 1枚絵に楕円の揺れ領域を置き、体の動き(弾む・上下・左右・着地)に遅れて揺れるバネの動きと、膨張・縮小・膨張縮小の変形を付けたループアニメーションを作る。ドット絵モードでは揺れ幅を整数ピクセルに丸めて最近傍で取るので新しい色が増えない。再生速度や枚数を変えても動きの中身は変わらない | PNG / JPG / WebP など(1枚) | スプライトシート PNG + Aseprite 互換 JSON(Array) | [`tools/jiggle-animator.html`](tools/jiggle-animator.html) |
 | スクショ スプライトシート | スクリーンショットを Ctrl+V で1枚ずつ貼り付け(ドロップ・ファイル選択も可)、並べ替え・削除したうえで、全コマ共通のトリミング範囲で切り出してスプライトシートにまとめる。コマ間で絵が変化している範囲の自動検出、背景色の透過(外側からつながった背景だけ / 指定色すべて)、透過後の絵の範囲での位置揃え(下端・上端・左端・右端・中央。コマ整列ツールと同じく、端で揃えたまとまりをセル中央に置く。セルを絵に合わせて詰めて余白を付けることも可)、コマごとの位置の微調整(前のコマを重ねて表示)ができる | クリップボードの画像 / PNG / JPG など(複数) | スプライトシート PNG + Aseprite 互換 JSON(Hash / Array) | [`tools/screenshot-sprite-sheet.html`](tools/screenshot-sprite-sheet.html) |
+| コマ整列ツール | 1枚の画像にバラバラに置かれたアニメのコマを、背景色(または透明部分)との差と連結領域から自動で見つけて切り出し、アニメごとに格子状のスプライトシートへ並べ直す。結合距離で途切れた煙なども1コマにまとめられ、結合・削除・枠の追加や範囲調整・並べ替え・新しいアニメへの切り出しを手で直せる。コマはアニメ内で上下左右いずれかの端(または中央)に揃え、まとまり全体をセル中央に置く。背景は透過(境界のぼかし・色の混ざり除去つき)か背景色のまま | PNG / BMP / JPG / WebP(1枚) | スプライトシート PNG + Aseprite 互換 JSON(Hash / Array、アニメごとに frameTags) | [`tools/frame-sorter.html`](tools/frame-sorter.html) |
 
 ### Aseprite シート変換
 
@@ -35,6 +36,10 @@
 ### スクショ スプライトシート
 
 ![スクショ スプライトシートの画面](docs/images/screenshot-sprite-sheet.png)
+
+### コマ整列ツール
+
+![コマ整列ツールの画面](docs/images/frame-sorter.png)
 
 ## 使い方
 

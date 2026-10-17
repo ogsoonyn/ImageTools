@@ -1,0 +1,1381 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>コマ整列ツール</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<!-- common:begin theme-init -->
+<script>
+  // 描画前に保存済みテーマを反映してちらつきを防ぐ（localStorage が使えなくても動く）
+  (() => {
+    try {
+      const t = localStorage.getItem("imagetools:theme");
+      if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
+    } catch (e) { /* 保存領域が使えない環境では OS 設定に従う */ }
+  })();
+</script>
+<!-- common:end theme-init -->
+<style>
+/* common:begin theme-vars */
+/* テーマ変数。既存ツールの変数名（--bg/--panel/--line/--fg/--muted/--accent/--accent-fg/--warn/--chk-*）を踏襲し、
+   Aseprite 側の名前（--surface/--surface-2/--accent-soft/--danger/--checker-*）も別名として用意する */
+:root{
+  --bg:#eef1f3; --panel:#ffffff; --surface-2:#e4e8ec; --line:#d6dce1; --fg:#1b2329; --muted:#5d6b75;
+  --accent:#0d7f86; --accent-fg:#ffffff; --accent-soft:#d4eef0; --warn:#a1560b; --danger:#b42318;
+  --chk-a:#ffffff; --chk-b:#d9dde1;
+  --surface:var(--panel); --checker-a:var(--chk-a); --checker-b:var(--chk-b);
+  --font-body:"Hiragino Sans","Yu Gothic UI","Noto Sans JP",system-ui,sans-serif;
+  --font-mono:ui-monospace,"Cascadia Mono",Consolas,"JetBrains Mono",monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#12171b; --panel:#1a2126; --surface-2:#232b31; --line:#2c363d; --fg:#e3e9ed; --muted:#93a2ad;
+  --accent:#3cc3c6; --accent-fg:#0b1417; --accent-soft:#163a3d; --warn:#e7a35a; --danger:#ff8a7a;
+  --chk-a:#2a3238; --chk-b:#20272c; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#12171b; --panel:#1a2126; --surface-2:#232b31; --line:#2c363d; --fg:#e3e9ed; --muted:#93a2ad;
+  --accent:#3cc3c6; --accent-fg:#0b1417; --accent-soft:#163a3d; --warn:#e7a35a; --danger:#ff8a7a;
+  --chk-a:#2a3238; --chk-b:#20272c; color-scheme:dark}
+/* common:end theme-vars */
+
+/* common:begin base */
+*,*::before,*::after{box-sizing:border-box}
+h1,h2,h3,p,dl,dd{margin:0}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;margin:0}
+html,body{background:var(--bg);color:var(--fg)}
+body{margin:0;font-family:var(--font-body);font-size:14px;line-height:1.6}
+.wrap{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:16px 40px;max-width:1280px;margin:0 auto}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+h1{text-wrap:balance}
+[hidden]{display:none!important}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+@media (prefers-reduced-motion: reduce){*{transition:none!important}}
+/* common:end base */
+
+/* common:begin utilities */
+/* Tailwind 互換の最小ユーティリティ（CDN 不使用。使うクラスだけ書き足す） */
+.flex{display:flex}.grid{display:grid}.flex-col{flex-direction:column}.flex-wrap{flex-wrap:wrap}
+.items-center{align-items:center}.items-end{align-items:flex-end}.justify-between{justify-content:space-between}.justify-center{justify-content:center}
+.gap-1{gap:4px}.gap-2{gap:8px}.gap-3{gap:12px}.gap-4{gap:16px}.gap-5{gap:20px}
+.mb-2{margin-bottom:8px}.mb-4{margin-bottom:16px}.mt-2{margin-top:8px}.p-3{padding:12px}.p-4{padding:16px}
+.min-w-0{min-width:0}.w-full{width:100%}
+.grid-cols-2{grid-template-columns:repeat(2,minmax(0,1fr))}
+@media (min-width:640px){.sm\:grid-cols-4{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.text-xs{font-size:12px}.text-sm{font-size:13px}.text-xl{font-size:20px;line-height:1.4}.font-bold{font-weight:700}
+.text-muted{color:var(--muted)}
+.mono,.num{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+/* common:end utilities */
+
+/* common:begin components */
+/* daisyUI 風コンポーネント（必要分のみ） */
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px}
+.sec-title{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:700}
+.hint{font-size:12px;color:var(--muted)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--line);background:var(--panel);color:var(--fg);border-radius:7px;padding:6px 12px;font-size:13px;font-weight:500;line-height:1.4;cursor:pointer;white-space:nowrap;text-decoration:none;transition:background .15s,border-color .15s}
+.btn:hover{border-color:var(--accent)}
+.btn-primary{background:var(--accent);color:var(--accent-fg);border-color:var(--accent);font-weight:700}
+.btn-primary:hover{filter:brightness(1.08)}
+.btn-ghost{border-color:transparent;background:transparent}
+.btn-ghost:hover{background:var(--surface-2);border-color:transparent}
+.btn-sm{padding:3px 8px;font-size:12px}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.is-active,.btn[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--accent)}
+.join{display:inline-flex;flex-wrap:wrap}
+.join>.btn{border-radius:0;margin-left:-1px}
+.join>.btn:first-child{border-radius:7px 0 0 7px;margin-left:0}
+.join>.btn:last-child{border-radius:0 7px 7px 0}
+.select,.input{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:4px 8px;color:var(--fg);font-family:var(--font-mono);font-size:13px;min-width:0}
+.range{width:100%;accent-color:var(--accent)}
+.checkbox{accent-color:var(--accent);margin:0}
+.badge{display:inline-block;font-size:11px;font-weight:700;padding:1px 8px;border-radius:999px;background:var(--accent);color:var(--accent-fg)}
+.warn{color:var(--warn)}.danger{color:var(--danger)}
+.drop{display:block;border:1.5px dashed var(--line);border-radius:8px;padding:14px;text-align:center;cursor:pointer;transition:border-color .15s,background .15s}
+.drop.over,.drop:hover,.drop:has(+ .sr-only:focus){border-color:var(--accent);background:var(--accent-soft)}
+.drop:has(+ .sr-only:focus-visible){outline:2px solid var(--accent);outline-offset:2px}
+.bg-checker{background-color:var(--chk-a);background-image:linear-gradient(45deg,var(--chk-b) 25%,transparent 25%,transparent 75%,var(--chk-b) 75%),linear-gradient(45deg,var(--chk-b) 25%,transparent 25%,transparent 75%,var(--chk-b) 75%);background-size:16px 16px;background-position:0 0,8px 8px}
+.stage{border-radius:8px;border:1px solid var(--line);overflow:auto;max-height:70vh;display:flex;align-items:flex-start;justify-content:center;padding:12px}
+.stage canvas{max-width:100%;height:auto}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));background:var(--fg);color:var(--bg);padding:8px 14px;border-radius:8px;font-size:13px;opacity:0;pointer-events:none;transition:opacity .2s;z-index:100;max-width:calc(100vw - 32px)}
+.toast.show{opacity:1}
+/* common:end components */
+
+/* common:begin header-style */
+.app-header{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 12px;margin-bottom:16px}
+.app-header .back{display:inline-block;padding:4px 0;font-size:12px;color:var(--muted);text-decoration:none}
+.app-header .back:hover{color:var(--accent)}
+.app-header .actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+/* common:end header-style */
+
+/* ---- ここから下はツール固有のスタイル ---- */
+/* Layout: 左 = 設定パネル（固定幅）, 右 = 元画像・アニメ一覧・出力。狭幅では縦積み */
+.grid-main{display:grid;grid-template-columns:320px minmax(0,1fr);gap:16px;align-items:start}
+@media (max-width:900px){.grid-main{grid-template-columns:minmax(0,1fr)}}
+.field{display:flex;flex-direction:column;gap:4px}
+.field .row{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.lbl{font-size:13px}
+.grid-2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.stat dt{font-size:11px;color:var(--muted)}
+.stat dd{font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:15px;font-weight:600}
+input[type=color]{width:36px;height:28px;border:1px solid var(--line);border-radius:6px;background:var(--bg);padding:2px;cursor:pointer}
+.toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.srcstage{border:1px solid var(--line);border-radius:8px;overflow:auto;max-height:72vh;padding:8px;background:var(--surface-2)}
+.srcwrap{position:relative;display:inline-block;line-height:0;vertical-align:top}
+.srcwrap canvas#srcView{display:block;max-width:none}
+.srcwrap.fit canvas#srcView{max-width:100%;height:auto}
+.srcwrap.pixel canvas#srcView{image-rendering:pixelated}
+#ovl{position:absolute;left:0;top:0;touch-action:none;cursor:crosshair}
+#ovl.tool-select{cursor:default}
+.empty{padding:32px 12px;text-align:center;color:var(--muted);font-size:13px}
+.gcard{border:1px solid var(--line);border-radius:8px;padding:8px 10px;display:flex;flex-direction:column;gap:6px}
+.gcard.active{border-color:var(--accent)}
+.ghead{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.gdot{width:12px;height:12px;border-radius:50%;flex:none}
+.gname{width:130px}
+.thumbs{display:flex;flex-wrap:wrap;gap:6px;min-height:60px;padding:2px;border-radius:6px}
+.thumbs.over-end{outline:2px dashed var(--accent);outline-offset:2px}
+.thumb{position:relative;width:56px;height:56px;border:1px solid var(--line);border-radius:6px;cursor:grab;flex:none}
+.thumb canvas{width:100%;height:100%;display:block;border-radius:5px}
+.thumb .idx{position:absolute;left:2px;top:1px;font-size:10px;font-family:var(--font-mono);line-height:1.2;background:var(--panel);color:var(--fg);padding:0 3px;border-radius:3px;opacity:.85}
+.thumb.sel{outline:2.5px solid var(--accent);outline-offset:1px}
+.thumb.drop-before{box-shadow:-4px 0 0 0 var(--accent)}
+.thumb.drop-after{box-shadow:4px 0 0 0 var(--accent)}
+.kbd{font-family:var(--font-mono);font-size:11px;border:1px solid var(--line);border-radius:4px;padding:0 4px;color:var(--muted)}
+.anim-box{display:flex;justify-content:center;align-items:center;min-height:200px}
+#animView{image-rendering:pixelated;max-width:100%}
+/* 選択中のコマへの操作バー（画面下に固定）。表示中はトーストをその上に出す */
+.selbar{position:fixed;left:0;right:0;margin:0 auto;width:max-content;bottom:calc(12px + env(safe-area-inset-bottom,0px));z-index:90;display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:center;background:var(--panel);border:1px solid var(--accent);border-radius:10px;padding:8px 12px;box-shadow:0 6px 24px rgba(0,0,0,.25);max-width:calc(100vw - 32px)}
+body.has-selbar .toast{bottom:calc(84px + env(safe-area-inset-bottom,0px))}
+body.has-selbar .wrap{padding-bottom:110px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <!-- common:begin header -->
+  <header class="app-header">
+    <div class="min-w-0">
+      <a class="back" href="../index.html">← ツール一覧</a>
+      <h1 class="text-xl font-bold">コマ整列ツール</h1>
+      <p class="hint">バラバラに置かれたアニメのコマを自動で見つけて切り出し、アニメごとに格子状のスプライトシートへ並べ直します。処理はすべてブラウザ内で完結します。</p>
+    </div>
+    <div class="actions">
+      <button class="btn btn-primary" type="button" id="btnPng" disabled>PNGを保存</button>
+      <button class="btn" type="button" id="btnJson" disabled>JSONを保存</button>
+      <button class="btn btn-ghost" type="button" id="btnResetPrefs" title="検出・背景・配置・JSON形式・FPS などの設定を初期値に戻します（背景色と出力ファイル名は対象外）">設定をリセット</button>
+      <button class="btn btn-ghost" type="button" id="themeToggle">テーマ: 自動</button>
+    </div>
+  </header>
+  <!-- common:end header -->
+
+  <div class="grid-main">
+    <!-- 設定 -->
+    <aside class="panel p-4 flex flex-col gap-5">
+      <section class="flex flex-col gap-2">
+        <h2 class="sec-title">入力</h2>
+        <label class="drop" id="drop" for="fileInput">
+          <span class="lbl">PNG / BMP / JPG / WebP をドロップ、またはクリックして選択</span><br>
+          <span class="hint">コマがバラバラに置かれた1枚の画像</span>
+        </label>
+        <input type="file" id="fileInput" class="sr-only" accept="image/png,image/bmp,image/jpeg,image/webp,image/*">
+        <div class="flex flex-wrap items-center gap-2"><button class="btn" type="button" id="btnSample">サンプルを読み込む</button></div>
+        <p class="hint" id="srcNote">未読み込み</p>
+      </section>
+
+      <section class="flex flex-col gap-3">
+        <h2 class="sec-title">コマ検出</h2>
+        <div class="join" role="group" aria-label="検出の基準" id="detSeg">
+          <button class="btn btn-sm" type="button" data-det="color" aria-pressed="true">背景色との差</button>
+          <button class="btn btn-sm" type="button" data-det="alpha" aria-pressed="false">透明部分</button>
+        </div>
+        <div class="flex items-center gap-2 flex-wrap" id="bgRow">
+          <input type="color" id="bgColor" value="#5b5b5b" aria-label="背景色">
+          <span class="mono text-sm" id="bgHex">#5B5B5B</span>
+          <button class="btn btn-sm" type="button" id="btnPickCorner">左上から取得</button>
+        </div>
+        <div class="field">
+          <div class="row"><label for="tol">許容値</label><span class="num" id="tolV"></span></div>
+          <input class="range" type="range" id="tol" min="0" max="120" value="10">
+          <p class="hint" id="tolHint">背景色との差（RGB各成分の最大差）がこれより大きい画素をコマとみなします</p>
+        </div>
+        <div class="field">
+          <div class="row"><label for="gap">結合距離 px</label><span class="num" id="gapV"></span></div>
+          <input class="range" type="range" id="gap" min="0" max="40" value="6">
+          <p class="hint">この距離以内の塊は1コマにまとめます。煙や火の粉のように途切れた絵は大きめに</p>
+        </div>
+        <div class="field">
+          <div class="row"><label for="minSize">最小サイズ px</label><span class="num" id="minSizeV"></span></div>
+          <input class="range" type="range" id="minSize" min="1" max="64" value="6">
+          <p class="hint">幅・高さともこれ未満の塊はゴミとして無視します</p>
+        </div>
+        <div class="field">
+          <label for="autoMode">自動の並び順とアニメ分け</label>
+          <select class="select" id="autoMode">
+            <option value="rows">横の行ごとに1アニメ（左→右）</option>
+            <option value="cols">縦の列ごとに1アニメ（上→下）</option>
+            <option value="all-rows">全部で1アニメ（行優先）</option>
+            <option value="all-cols">全部で1アニメ（列優先）</option>
+          </select>
+          <p class="hint">検出し直すと手直しは消えます（<span class="kbd">Ctrl+Z</span> で戻せます）</p>
+        </div>
+        <button class="btn" type="button" id="btnRedetect">検出し直す</button>
+      </section>
+
+      <section class="flex flex-col gap-3">
+        <h2 class="sec-title">背景</h2>
+        <div class="join" role="group" aria-label="出力の背景" id="bgOutSeg">
+          <button class="btn btn-sm" type="button" data-bgout="clear" aria-pressed="true">透過にする</button>
+          <button class="btn btn-sm" type="button" data-bgout="keep" aria-pressed="false">背景色のまま</button>
+        </div>
+        <div id="clearOpts" class="flex flex-col gap-3">
+          <div class="field">
+            <div class="row"><label for="soft">境界のぼかし幅</label><span class="num" id="softV"></span></div>
+            <input class="range" type="range" id="soft" min="0" max="128" value="24">
+          </div>
+          <label class="flex items-center gap-2 lbl"><input class="checkbox" type="checkbox" id="unblend" checked> 境界ピクセルから背景色の混ざりを除去</label>
+        </div>
+      </section>
+
+      <section class="flex flex-col gap-3">
+        <h2 class="sec-title">シート配置</h2>
+        <div class="field">
+          <span class="lbl" id="anchorLbl">コマの揃え方</span>
+          <div class="join" role="group" aria-labelledby="anchorLbl" id="anchorSeg">
+            <button class="btn btn-sm" type="button" data-anchor="bottom" aria-pressed="true">下端</button>
+            <button class="btn btn-sm" type="button" data-anchor="top" aria-pressed="false">上端</button>
+            <button class="btn btn-sm" type="button" data-anchor="left" aria-pressed="false">左端</button>
+            <button class="btn btn-sm" type="button" data-anchor="right" aria-pressed="false">右端</button>
+            <button class="btn btn-sm" type="button" data-anchor="center" aria-pressed="false">中央</button>
+          </div>
+          <p class="hint">アニメの中でコマどうしを選んだ端に揃え（もう一方の向きは中央）、揃えたまとまり全体をセルの真ん中に置きます。「中央」は端に揃えず、上下左右とも中央に置きます。</p>
+        </div>
+        <div class="field">
+          <label for="cellMode">セルサイズ</label>
+          <select class="select" id="cellMode">
+            <option value="uniform">全アニメで統一（最大のコマに合わせる）</option>
+            <option value="group">アニメごと（各アニメの最大に合わせる）</option>
+            <option value="fixed">数値で指定</option>
+          </select>
+        </div>
+        <div class="grid-2" id="fixedRow" hidden>
+          <div class="field"><label for="cellW">幅 px</label><input class="input" type="number" id="cellW" min="1" max="4096" value="256"></div>
+          <div class="field"><label for="cellH">高さ px</label><input class="input" type="number" id="cellH" min="1" max="4096" value="256"></div>
+        </div>
+        <div class="grid-2">
+          <div class="field"><label for="pad">セル内余白 px</label><input class="input" type="number" id="pad" min="0" max="64" value="1"></div>
+          <div class="field"><label for="maxCols">1行の最大列数</label><input class="input" type="number" id="maxCols" min="0" max="256" value="0"><span class="hint">0 = 折り返さない</span></div>
+        </div>
+        <label class="flex items-center gap-2 lbl"><input class="checkbox" type="checkbox" id="mult4"> セルサイズを4の倍数に切り上げ</label>
+        <p class="hint">アニメごとに新しい行から並べます。</p>
+      </section>
+
+      <section class="flex flex-col gap-3">
+        <h2 class="sec-title">書き出し</h2>
+        <div class="field">
+          <label for="baseName">出力ファイル名</label>
+          <input class="input" type="text" id="baseName" value="sprite_sheet">
+        </div>
+        <div class="field">
+          <label for="jsonFormat">JSON形式</label>
+          <select class="select" id="jsonFormat">
+            <option value="hash">Aseprite互換 Hash（frames がオブジェクト）</option>
+            <option value="array">Aseprite互換 Array（frames が配列）</option>
+          </select>
+          <span class="hint">アニメは frameTags として書き出します。duration はFPSから算出します。</span>
+        </div>
+      </section>
+    </aside>
+
+    <main class="flex flex-col gap-4 min-w-0">
+      <section class="panel p-4 flex flex-col gap-3">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <h2 class="sec-title">元画像（コマの手直し）</h2>
+          <div class="toolbar">
+            <label class="hint" for="zoom">表示</label>
+            <select class="select" id="zoom">
+              <option value="fit">全体</option>
+              <option value="0.5">50%</option>
+              <option value="1">100%</option>
+              <option value="2">200%</option>
+              <option value="4">400%</option>
+            </select>
+          </div>
+        </div>
+        <div class="toolbar">
+          <div class="join" role="group" aria-label="操作" id="toolSeg">
+            <button class="btn btn-sm" type="button" data-tool="select" aria-pressed="true" title="クリックで選択、Shift/Ctrl で追加選択、空白をドラッグで範囲選択 (V)">選択</button>
+            <button class="btn btn-sm" type="button" data-tool="add" aria-pressed="false" title="ドラッグで枠を描いてコマを追加 (R)">枠を追加</button>
+            <button class="btn btn-sm" type="button" data-tool="pick" aria-pressed="false" title="クリックした色を背景色にする (I)">スポイト</button>
+          </div>
+          <button class="btn btn-sm" type="button" id="btnMerge" title="選択したコマを1コマにまとめる (M)">結合</button>
+          <button class="btn btn-sm" type="button" id="btnDelete" title="選択したコマを消す (Delete)">削除</button>
+          <button class="btn btn-sm" type="button" id="btnNewGroup" title="選択したコマを新しいアニメに分ける (G)">新しいアニメに切り出す</button>
+          <button class="btn btn-sm" type="button" id="btnUndo" title="元に戻す (Ctrl+Z)">元に戻す</button>
+          <button class="btn btn-sm" type="button" id="btnRedo" title="やり直す (Ctrl+Shift+Z)">やり直す</button>
+        </div>
+        <p class="hint" id="selNote">枠の辺をドラッグすると範囲を調整できます（1コマだけ選択中のとき）。</p>
+        <div class="srcstage" id="srcStage">
+          <div class="srcwrap fit" id="srcWrap">
+            <canvas id="srcView" width="320" height="160" aria-label="元画像とコマの枠"></canvas>
+            <canvas id="ovl" class="tool-select"></canvas>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel p-4 flex flex-col gap-3">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <h2 class="sec-title">アニメ一覧（並び順）</h2>
+          <span class="hint">サムネイルをドラッグで並べ替え・別のアニメへ移動</span>
+        </div>
+        <div id="groupList" class="flex flex-col gap-3"><div class="empty">画像を読み込むとコマがここに並びます</div></div>
+      </section>
+
+      <section class="panel p-4">
+        <dl class="stat grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div><dt>コマ数</dt><dd id="stCount">–</dd></div>
+          <div><dt>アニメ数</dt><dd id="stGroups">–</dd></div>
+          <div><dt>セル</dt><dd id="stCell">–</dd></div>
+          <div><dt>シートサイズ</dt><dd id="stSheet">–</dd></div>
+        </dl>
+        <p class="hint mt-2 warn" id="stWarn" hidden></p>
+      </section>
+
+      <section class="panel p-4 flex flex-col gap-3">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <h2 class="sec-title">スプライトシート</h2>
+          <label class="flex items-center gap-1 hint"><input class="checkbox" type="checkbox" id="showGrid" checked> セル枠</label>
+        </div>
+        <div class="stage bg-checker"><canvas id="sheetView" width="1" height="1" aria-label="スプライトシート"></canvas></div>
+      </section>
+
+      <section class="panel p-4 flex flex-col gap-3">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <h2 class="sec-title">アニメーション確認</h2>
+          <div class="toolbar">
+            <select class="select" id="animGroup" aria-label="再生するアニメ"></select>
+            <button class="btn btn-sm" type="button" id="btnPlay">一時停止</button>
+            <label class="hint" for="fps">FPS</label>
+            <input class="range" style="width:110px" type="range" id="fps" min="1" max="60" value="12">
+            <span class="num" id="fpsV"></span>
+          </div>
+        </div>
+        <div class="stage bg-checker anim-box"><canvas id="animView" width="1" height="1" aria-label="アニメーション"></canvas></div>
+        <p class="hint" id="animNote"></p>
+      </section>
+    </main>
+  </div>
+</div>
+
+<div class="selbar" id="selBar" hidden role="toolbar" aria-label="選択中のコマの操作">
+  <span class="lbl" id="selBarCount"></span>
+  <button class="btn btn-sm btn-primary" type="button" id="sbNewGroup">新しいアニメに切り出す</button>
+  <select class="select" id="sbMoveTo" aria-label="移動先のアニメ"></select>
+  <button class="btn btn-sm" type="button" id="sbMerge">1コマに結合</button>
+  <button class="btn btn-sm" type="button" id="sbDelete">削除</button>
+  <button class="btn btn-sm btn-ghost" type="button" id="sbClear">選択解除</button>
+</div>
+
+<!-- common:begin toast -->
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<!-- common:end toast -->
+
+<!-- common:begin common-js -->
+<script>
+/* 共通 JS。各ツールはこのブロックをそのままコピーし、下の「ツール固有」スクリプトから IT.* を使う */
+const IT = (() => {
+  const PREFIX = "imagetools:";
+
+  // ---- localStorage の安全な読み書き（プライベートモード等で例外になっても落ちない） ----
+  const store = {
+    get(key, fallback = null) {
+      try { const v = localStorage.getItem(PREFIX + key); return v === null ? fallback : JSON.parse(v); }
+      catch (e) { return fallback; }
+    },
+    set(key, value) {
+      try { localStorage.setItem(PREFIX + key, JSON.stringify(value)); return true; }
+      catch (e) { return false; }
+    },
+    remove(key) {
+      try { localStorage.removeItem(PREFIX + key); } catch (e) { /* 無視 */ }
+    },
+  };
+
+  // ---- トースト ----
+  let toastTimer = 0;
+  function toast(msg, ms = 2400) {
+    const t = document.getElementById("toast");
+    if (!t) return;
+    t.textContent = msg;
+    t.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.remove("show"), ms);
+  }
+
+  // ---- テーマ切替（自動 → ライト → ダーク の順に循環） ----
+  // theme-init は生の文字列で読むため、ここも JSON を介さず同じキーに文字列で保存する
+  const THEME_KEY = PREFIX + "theme";
+  const THEME_LABEL = { auto: "テーマ: 自動", light: "テーマ: ライト", dark: "テーマ: ダーク" };
+  function getTheme() {
+    const t = document.documentElement.dataset.theme;
+    return t === "light" || t === "dark" ? t : "auto";
+  }
+  function applyTheme(theme) {
+    const root = document.documentElement;
+    if (theme === "light" || theme === "dark") root.dataset.theme = theme;
+    else delete root.dataset.theme;
+    try {
+      if (theme === "auto") localStorage.removeItem(THEME_KEY);
+      else localStorage.setItem(THEME_KEY, theme);
+    } catch (e) { /* 保存できなくても切替自体は有効 */ }
+    const btn = document.getElementById("themeToggle");
+    if (btn) btn.textContent = THEME_LABEL[getTheme()];
+  }
+  function initThemeToggle() {
+    const btn = document.getElementById("themeToggle");
+    if (!btn) return;
+    btn.textContent = THEME_LABEL[getTheme()];
+    btn.addEventListener("click", () => {
+      const next = { auto: "light", light: "dark", dark: "auto" }[getTheme()];
+      applyTheme(next);
+      toast(THEME_LABEL[next]);
+    });
+  }
+
+  // ---- ファイル保存（Claude アーティファクトでは downloads、通常ブラウザでは <a download>） ----
+  // "anchor" = 通常ブラウザ / null = アーティファクト内だが downloads が使えない / それ以外 = downloads ハンドル
+  let downloadsP = null;
+  function getDownloads() {
+    if (!downloadsP) {
+      downloadsP = (window.claude && typeof window.claude.use === "function")
+        ? Promise.resolve().then(() => window.claude.use("downloads")).then((d) => d || null, () => null)
+        : Promise.resolve("anchor");
+    }
+    return downloadsP;
+  }
+  getDownloads();
+  const SAVE_ERRORS = { declined: "保存をキャンセルしました", rate_limited: "保存が続いたため一時的に制限されています。少し待ってからお試しください" };
+  async function saveFile(filename, data) {
+    const dl = await getDownloads();
+    if (dl === "anchor") {
+      const blob = data instanceof Blob ? data : new Blob([data]);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = filename;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 4000);
+      toast(filename + " を保存しました");
+      return true;
+    }
+    if (!dl) { toast("この表示ではファイルを保存できません"); return false; }
+    try {
+      const res = await dl.save({ filename, data });
+      const ok = !res || res.status === undefined || res.status === "saved";
+      if (ok) toast(filename + " を保存しました");
+      return ok;
+    } catch (e) {
+      const code = (e && e.code) || "error";
+      toast(SAVE_ERRORS[code] || "保存できませんでした（" + code + "）");
+      return false;
+    }
+  }
+  function canvasToBlob(canvas, type = "image/png") {
+    return new Promise((res, rej) => canvas.toBlob((b) => (b ? res(b) : rej(new Error("toBlob failed"))), type));
+  }
+
+  // ---- ドラッグ&ドロップ受付（ページ全体で受け、zone に .over を付ける） ----
+  // accept: ファイルを絞る関数（省略時はすべて）。onFiles には絞り込み後の File[] を渡す
+  function initDrop({ zone, input, accept = () => true, onFiles, emptyMessage = "対応するファイルが見つかりませんでした" }) {
+    const zoneEl = typeof zone === "string" ? document.getElementById(zone) : zone;
+    const inputEl = typeof input === "string" ? document.getElementById(input) : input;
+    const handle = (list) => {
+      const files = [...(list || [])].filter(accept);
+      if (!files.length) { toast(emptyMessage); return; }
+      onFiles(files);
+    };
+    let depth = 0;
+    const hasFiles = (e) => !!e.dataTransfer && [...e.dataTransfer.types].includes("Files");
+    document.addEventListener("dragenter", (e) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault(); depth++; zoneEl && zoneEl.classList.add("over");
+    });
+    document.addEventListener("dragover", (e) => { if (hasFiles(e)) e.preventDefault(); });
+    document.addEventListener("dragleave", (e) => {
+      if (!hasFiles(e)) return;
+      depth = Math.max(0, depth - 1);
+      if (!depth && zoneEl) zoneEl.classList.remove("over");
+    });
+    document.addEventListener("drop", (e) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault(); depth = 0; zoneEl && zoneEl.classList.remove("over");
+      handle(e.dataTransfer.files);
+    });
+    if (inputEl) inputEl.addEventListener("change", (e) => { handle(e.target.files); e.target.value = ""; });
+  }
+
+  initThemeToggle();
+  // 別タブでテーマを変えたら追従する（保存はし直さない）
+  window.addEventListener("storage", (e) => {
+    if (e.key !== THEME_KEY) return;
+    const t = e.newValue === "light" || e.newValue === "dark" ? e.newValue : null;
+    if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme;
+    const btn = document.getElementById("themeToggle");
+    if (btn) btn.textContent = THEME_LABEL[getTheme()];
+  });
+  return { store, toast, saveFile, canvasToBlob, initDrop, applyTheme, getTheme };
+})();
+</script>
+<!-- common:end common-js -->
+
+<script>
+/* ---- ここから下はツール固有のスクリプト ---- */
+const $ = (id) => document.getElementById(id);
+const toast = IT.toast;
+const PALETTE = ['#e4572e','#17a3a0','#d9a400','#5f9e2f','#8e5bd6','#e0479e','#1f8fd6','#f08a24'];
+const mk = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
+const hexToRgb = (h) => { const n = parseInt(h.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
+const rgbToHex = (r, g, b) => '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('');
+
+// ---- 状態 ----
+// frames: id -> {id,x,y,w,h,labels}（元画像上の矩形。labels は自動検出の塊ID集合で、null なら矩形内のコマ画素すべて）
+// groups: [{id,name,color,ids:[frameId...]}]（1アニメ = 1グループ。すべてのコマはどれか1つのグループに属する）
+const S = {
+  src: null, W: 0, H: 0, data: null, name: '',
+  fg: null, label: null, compCount: 0, dropped: 0,
+  frames: new Map(), groups: [], nextId: 1, nextG: 1,
+  sel: new Set(), activeG: null,
+  tool: 'select', det: 'color', bgout: 'clear', anchor: 'bottom',
+  undo: [], redo: [],
+};
+let layout = null;            // シート配置の計算結果
+const sheet = mk(1, 1);       // 書き出し用シート
+const cutCache = new Map();   // frameId -> {key, canvas}
+let detectCount = 0, buildCount = 0; // テスト用の処理回数
+
+// ---- 画像の読み込み ----
+async function loadFile(file) {
+  try {
+    const bmp = await createImageBitmap(file);
+    setSource(bmp, file.name);
+    bmp.close && bmp.close();
+  } catch (e) { toast(file.name + ' を読み込めませんでした'); }
+}
+function setSource(img, name) {
+  const W = img.width, H = img.height;
+  const c = mk(W, H), ctx = c.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(img, 0, 0);
+  S.src = c; S.W = W; S.H = H; S.name = name;
+  S.data = ctx.getImageData(0, 0, W, H).data;
+  const v = $('srcView'); v.width = W; v.height = H; v.getContext('2d').drawImage(c, 0, 0);
+  // 四隅が透明なら「透明部分」で検出、そうでなければ左上の色を背景色にする
+  const d = S.data, corners = [0, W - 1, (H - 1) * W, H * W - 1];
+  const transparent = corners.some(i => d[i * 4 + 3] < 128);
+  setSeg('detSeg', 'det', transparent ? 'alpha' : 'color');
+  if (!transparent) $('bgColor').value = rgbToHex(d[0], d[1], d[2]);
+  $('baseName').value = (name.replace(/\.[^.]+$/, '') || 'sprite_sheet') + '_sheet';
+  $('srcNote').textContent = name + '（' + W + '×' + H + '）';
+  S.undo = []; S.redo = [];
+  syncLabels(); sizeOverlay();
+  runDetect(false);
+}
+
+// ---- コマ検出 ----
+function computeFg() {
+  const { W, H, data } = S, n = W * H, fg = new Uint8Array(n);
+  const tol = +$('tol').value;
+  if (S.det === 'alpha') {
+    for (let i = 0; i < n; i++) fg[i] = data[i * 4 + 3] > tol ? 1 : 0;
+  } else {
+    const [br, bg, bb] = hexToRgb($('bgColor').value);
+    for (let i = 0, j = 0; i < n; i++, j += 4) {
+      if (data[j + 3] < 8) continue;
+      const dist = Math.max(Math.abs(data[j] - br), Math.abs(data[j + 1] - bg), Math.abs(data[j + 2] - bb));
+      fg[i] = dist > tol ? 1 : 0;
+    }
+  }
+  return fg;
+}
+// 正方形（チェビシェフ距離 r）の膨張。横→縦の2回、累積和で O(W*H)
+function dilate(src, W, H, r) {
+  const tmp = new Uint8Array(W * H), out = new Uint8Array(W * H), pre = new Int32Array(Math.max(W, H) + 1);
+  for (let y = 0; y < H; y++) {
+    const o = y * W;
+    for (let x = 0; x < W; x++) pre[x + 1] = pre[x] + src[o + x];
+    for (let x = 0; x < W; x++) { const a = Math.max(0, x - r), b = Math.min(W, x + r + 1); tmp[o + x] = pre[b] - pre[a] > 0 ? 1 : 0; }
+  }
+  for (let x = 0; x < W; x++) {
+    for (let y = 0; y < H; y++) pre[y + 1] = pre[y] + tmp[y * W + x];
+    for (let y = 0; y < H; y++) { const a = Math.max(0, y - r), b = Math.min(H, y + r + 1); out[y * W + x] = pre[b] - pre[a] > 0 ? 1 : 0; }
+  }
+  return out;
+}
+// 連結成分のラベリング（4近傍、Union-Find の2パス）。結果はコマ画素だけにラベルを付ける
+function labelComponents(mask, fg, W, H) {
+  const lab = new Int32Array(W * H).fill(-1);
+  const parent = [];
+  const find = (a) => { while (parent[a] !== a) { parent[a] = parent[parent[a]]; a = parent[a]; } return a; };
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const i = y * W + x;
+      if (!mask[i]) continue;
+      const l = x > 0 ? lab[i - 1] : -1, u = y > 0 ? lab[i - W] : -1;
+      if (l < 0 && u < 0) { lab[i] = parent.length; parent.push(parent.length); }
+      else if (l >= 0 && u >= 0) { const a = find(l), b = find(u); lab[i] = a; if (a !== b) parent[Math.max(a, b)] = Math.min(a, b); }
+      else lab[i] = l >= 0 ? l : u;
+    }
+  }
+  const remap = new Int32Array(parent.length).fill(-1);
+  const boxes = [];
+  for (let i = 0; i < W * H; i++) {
+    if (lab[i] < 0) continue;
+    if (!fg[i]) { lab[i] = -1; continue; }
+    const r = find(lab[i]);
+    let k = remap[r];
+    const x = i % W, y = (i / W) | 0;
+    if (k < 0) { k = remap[r] = boxes.length; boxes.push({ x0: x, y0: y, x1: x, y1: y }); }
+    else { const b = boxes[k]; if (x < b.x0) b.x0 = x; if (x > b.x1) b.x1 = x; if (y > b.y1) b.y1 = y; }
+    lab[i] = k;
+  }
+  return { lab, boxes };
+}
+// 検出結果（S.fg / S.label）を決める設定。元に戻すときはこの値から塊の番号を作り直す（同じ入力なら同じ番号になる）
+const detParamsNow = () => ({ det: S.det, bgColor: $('bgColor').value, tol: $('tol').value, gap: $('gap').value });
+function buildMaps(p) {
+  const { W, H } = S;
+  S.fg = computeFg();
+  const r = Math.ceil(+p.gap / 2);
+  const mask = r > 0 ? dilate(S.fg, W, H, r) : S.fg;
+  const res = labelComponents(mask, S.fg, W, H);
+  S.label = res.lab; S.detParams = p; cutCache.clear();
+  return res.boxes;
+}
+function runDetect(withUndo = true) {
+  if (!S.src) return;
+  if (withUndo && S.frames.size) pushUndo();
+  const boxes = buildMaps(detParamsNow());
+  const minSize = +$('minSize').value;
+  S.frames = new Map(); S.nextId = 1; S.sel.clear();
+  boxes.forEach((b, k) => {
+    const id = S.nextId++;
+    S.frames.set(id, { id, x: b.x0, y: b.y0, w: b.x1 - b.x0 + 1, h: b.y1 - b.y0 + 1, labels: [k] });
+  });
+  // 枠の中に収まる小さな塊を先に取り込んでから、残った小さすぎる塊をゴミとして捨てる
+  absorbNested();
+  let dropped = 0;
+  for (const f of [...S.frames.values()]) if (f.w < minSize && f.h < minSize) { S.frames.delete(f.id); dropped++; }
+  S.dropped = dropped;
+  autoGroup();
+  detectCount++;
+  refresh();
+}
+
+// 他のコマの矩形にすっぽり収まる小さな塊（煙の切れ端など）は、そのコマの一部とみなしてまとめる
+function absorbNested() {
+  const list = [...S.frames.values()].sort((a, b) => b.w * b.h - a.w * a.h);
+  for (let i = list.length - 1; i >= 0; i--) {
+    const f = list[i];
+    const host = list.find(o => o !== f && S.frames.has(o.id) && o.w * o.h > f.w * f.h * 2 &&
+      f.x >= o.x && f.y >= o.y && f.x + f.w <= o.x + o.w && f.y + f.h <= o.y + o.h);
+    if (host) { host.labels.push(...f.labels); S.frames.delete(f.id); }
+  }
+}
+
+// ---- 並び順（元画像上の位置から読む順を推定する） ----
+// axis 方向の範囲が重なるものを帯にまとめる（短い方の半分以上重なれば同じ帯）
+function bands(list, axis) {
+  const span = axis === 'y' ? (f) => [f.y, f.y + f.h] : (f) => [f.x, f.x + f.w];
+  const sorted = [...list].sort((p, q) => span(p)[0] - span(q)[0] || span(p)[1] - span(q)[1]);
+  const out = []; let cur = null, lo = 0, hi = 0;
+  for (const f of sorted) {
+    const [s, e] = span(f);
+    const ov = Math.min(e, hi) - Math.max(s, lo);
+    if (cur && ov >= 0.5 * Math.min(e - s, hi - lo)) { cur.push(f); hi = Math.max(hi, e); }
+    else { cur = [f]; out.push(cur); lo = s; hi = e; }
+  }
+  return out;
+}
+// rowsFirst: true = 行（上→下）ごとに左→右。行の中で縦に重なって並ぶものは上→下
+function readOrder(list, rowsFirst) {
+  const outer = bands(list, rowsFirst ? 'y' : 'x');
+  return outer.map(b => bands(b, rowsFirst ? 'x' : 'y').flatMap(c => c.sort((p, q) => rowsFirst ? p.y - q.y : p.x - q.x)));
+}
+function newGroup(ids, name) {
+  const n = S.nextG++;
+  return { id: n, name: name || 'anim' + n, color: PALETTE[(n - 1) % PALETTE.length], ids };
+}
+function autoGroup() {
+  const mode = $('autoMode').value, list = [...S.frames.values()];
+  S.nextG = 1;
+  const order = readOrder(list, mode === 'rows' || mode === 'all-rows');
+  if (mode === 'rows' || mode === 'cols') S.groups = order.map(b => newGroup(b.map(f => f.id)));
+  else S.groups = list.length ? [newGroup(order.flat().map(f => f.id))] : [];
+  S.activeG = S.groups[0] ? S.groups[0].id : null;
+}
+
+// ---- 元に戻す / やり直す ----
+function snapshot() {
+  return JSON.stringify({ frames: [...S.frames.values()], groups: S.groups, nextId: S.nextId, nextG: S.nextG, activeG: S.activeG, det: S.detParams, dropped: S.dropped });
+}
+function restore(json) {
+  const o = JSON.parse(json);
+  // 検出時の設定が今と違えば、設定を戻して塊の番号を作り直す（コマの labels はその番号を指している）
+  const p = o.det, cur = S.detParams;
+  if (p && (!cur || p.det !== cur.det || p.bgColor !== cur.bgColor || p.tol !== cur.tol || p.gap !== cur.gap)) {
+    clearTimeout(detTimer);
+    setSeg('detSeg', 'det', p.det); $('bgColor').value = p.bgColor; $('tol').value = p.tol; $('gap').value = p.gap;
+    syncLabels(); savePrefs();
+    buildMaps(p);
+  }
+  S.frames = new Map(o.frames.map(f => [f.id, f])); S.groups = o.groups; S.nextId = o.nextId; S.nextG = o.nextG; S.activeG = o.activeG;
+  S.dropped = o.dropped || 0;
+  S.sel.clear(); refresh();
+}
+function pushUndo() { S.undo.push(snapshot()); if (S.undo.length > 100) S.undo.shift(); S.redo = []; }
+function undo() { if (drag || !S.undo.length) return; S.redo.push(snapshot()); restore(S.undo.pop()); }
+function redo() { if (drag || !S.redo.length) return; S.undo.push(snapshot()); restore(S.redo.pop()); }
+
+// ---- 編集操作 ----
+function groupOf(id) { return S.groups.find(g => g.ids.includes(id)); }
+function orderedSel() { return S.groups.flatMap(g => g.ids.filter(id => S.sel.has(id))); }
+function pruneGroups() {
+  S.groups = S.groups.filter(g => g.ids.length);
+  if (!S.groups.some(g => g.id === S.activeG)) S.activeG = S.groups[0] ? S.groups[0].id : null;
+}
+function removeIds(ids) { const set = new Set(ids); S.groups.forEach(g => { g.ids = g.ids.filter(id => !set.has(id)); }); }
+function mergeSel() {
+  const ids = orderedSel();
+  if (ids.length < 2) { toast('結合するコマを2つ以上選んでください'); return; }
+  pushUndo();
+  const fs = ids.map(id => S.frames.get(id));
+  const x0 = Math.min(...fs.map(f => f.x)), y0 = Math.min(...fs.map(f => f.y));
+  const x1 = Math.max(...fs.map(f => f.x + f.w)), y1 = Math.max(...fs.map(f => f.y + f.h));
+  const labels = fs.some(f => !f.labels) ? null : [...new Set(fs.flatMap(f => f.labels))];
+  const keep = fs[0];
+  Object.assign(keep, { x: x0, y: y0, w: x1 - x0, h: y1 - y0, labels });
+  removeIds(ids.slice(1)); ids.slice(1).forEach(id => S.frames.delete(id));
+  pruneGroups(); S.sel = new Set([keep.id]); refresh();
+}
+function deleteSel() {
+  const ids = orderedSel(); if (!ids.length) return;
+  pushUndo(); removeIds(ids); ids.forEach(id => S.frames.delete(id)); pruneGroups(); S.sel.clear(); refresh();
+}
+function newGroupFromSel() {
+  const ids = orderedSel(); if (!ids.length) { toast('新しいアニメにするコマを選んでください'); return; }
+  pushUndo();
+  const at = S.groups.indexOf(groupOf(ids[0]));
+  removeIds(ids);
+  const g = newGroup(ids);
+  S.groups.splice(at + 1, 0, g); pruneGroups(); S.activeG = g.id; refresh();
+  toast(ids.length + ' コマを新しいアニメ「' + g.name + '」に切り出しました');
+}
+function moveIds(ids, gid, beforeId) {
+  pushUndo();
+  removeIds(ids);
+  const g = S.groups.find(x => x.id === gid);
+  let at = beforeId == null ? g.ids.length : g.ids.indexOf(beforeId);
+  if (at < 0) at = g.ids.length;
+  g.ids.splice(at, 0, ...ids);
+  pruneGroups(); refresh();
+}
+function addFrame(x, y, w, h) {
+  // 描いた矩形をコマ画素の範囲まで詰める（何もなければ描いたまま）
+  let x0 = Infinity, y0 = Infinity, x1 = -1, y1 = -1;
+  for (let yy = y; yy < y + h; yy++) for (let xx = x; xx < x + w; xx++) {
+    if (S.fg[yy * S.W + xx]) { if (xx < x0) x0 = xx; if (xx > x1) x1 = xx; if (yy < y0) y0 = yy; if (yy > y1) y1 = yy; }
+  }
+  if (x1 >= 0) { x = x0; y = y0; w = x1 - x0 + 1; h = y1 - y0 + 1; }
+  pushUndo();
+  const id = S.nextId++;
+  S.frames.set(id, { id, x, y, w, h, labels: null });
+  let g = S.groups.find(gg => gg.id === S.activeG);
+  if (!g) { g = newGroup([]); S.groups.push(g); S.activeG = g.id; }
+  g.ids.push(id);
+  S.sel = new Set([id]); refresh();
+}
+
+// ---- コマの切り出し ----
+function cutKey(f) {
+  return [f.x, f.y, f.w, f.h, f.labels ? f.labels.join(',') : '*', S.bgout, S.det, $('bgColor').value, $('tol').value, $('soft').value, $('unblend').checked].join('|');
+}
+function cutFrame(f) {
+  const key = cutKey(f), c0 = cutCache.get(f.id);
+  if (c0 && c0.key === key) return c0.canvas;
+  const { W, data, fg, label } = S, c = mk(f.w, f.h), ctx = c.getContext('2d');
+  const img = ctx.createImageData(f.w, f.h), d = img.data;
+  const set = f.labels ? new Set(f.labels) : null;
+  const [kr, kg, kb] = hexToRgb($('bgColor').value), tol = +$('tol').value, soft = +$('soft').value, unblend = $('unblend').checked;
+  const keep = S.bgout === 'keep';
+  for (let yy = 0; yy < f.h; yy++) for (let xx = 0; xx < f.w; xx++) {
+    const i = (f.y + yy) * W + f.x + xx, j = i * 4, o = (yy * f.w + xx) * 4;
+    const member = fg[i] && (!set || set.has(label[i]));
+    if (!member) {
+      if (keep && S.det === 'color') { d[o] = kr; d[o + 1] = kg; d[o + 2] = kb; d[o + 3] = 255; }
+      continue;
+    }
+    let r = data[j], g = data[j + 1], b = data[j + 2], a = data[j + 3] / 255;
+    if (!keep && S.det === 'color' && soft > 0) {
+      const dist = Math.max(Math.abs(r - kr), Math.abs(g - kg), Math.abs(b - kb));
+      if (dist < tol + soft) {
+        const t = Math.max(0.001, (dist - tol) / soft);
+        if (unblend) { r = (r - kr * (1 - t)) / t; g = (g - kg * (1 - t)) / t; b = (b - kb * (1 - t)) / t; }
+        a *= t;
+      }
+    }
+    d[o] = r < 0 ? 0 : r > 255 ? 255 : r; d[o + 1] = g < 0 ? 0 : g > 255 ? 255 : g; d[o + 2] = b < 0 ? 0 : b > 255 ? 255 : b;
+    d[o + 3] = Math.round(a * 255);
+  }
+  ctx.putImageData(img, 0, 0);
+  cutCache.set(f.id, { key, canvas: c });
+  return c;
+}
+
+// ---- シート配置 ----
+function computeLayout() {
+  const pad = Math.max(0, +$('pad').value | 0), maxCols = Math.max(0, +$('maxCols').value | 0);
+  const mode = $('cellMode').value, m4 = $('mult4').checked;
+  const groups = S.groups.filter(g => g.ids.length);
+  const r4 = (v) => (m4 ? Math.ceil(v / 4) * 4 : v);
+  const sizeOf = (ids) => {
+    const fs = ids.map(id => S.frames.get(id));
+    return [r4(Math.max(...fs.map(f => f.w)) + pad * 2), r4(Math.max(...fs.map(f => f.h)) + pad * 2)];
+  };
+  const all = groups.flatMap(g => g.ids);
+  if (!all.length) return null;
+  const uni = mode === 'fixed' ? [r4(Math.max(1, +$('cellW').value | 0)), r4(Math.max(1, +$('cellH').value | 0))] : sizeOf(all);
+  const rects = [], tags = [];
+  let y = 0, W = 0, overflow = 0;
+  for (const g of groups) {
+    const [cw, ch] = mode === 'group' ? sizeOf(g.ids) : uni;
+    const n = g.ids.length, cols = maxCols > 0 ? Math.min(maxCols, n) : n;
+    tags.push({ name: g.name, from: rects.length, to: rects.length + n - 1, color: g.color, cw, ch });
+    // アニメ内の最大のコマを囲む枠をセル中央に置き、各コマはその枠の中で選んだ端に揃える
+    const fs = g.ids.map(id => S.frames.get(id));
+    const bw = Math.max(...fs.map(f => f.w)), bh = Math.max(...fs.map(f => f.h));
+    g.ids.forEach((id, i) => {
+      const f = S.frames.get(id), cx = (i % cols) * cw, cy = y + Math.floor(i / cols) * ch;
+      const bx = cx + Math.floor((cw - bw) / 2), by = cy + Math.floor((ch - bh) / 2), a = S.anchor;
+      const x = a === 'left' ? bx : a === 'right' ? bx + bw - f.w : bx + Math.floor((bw - f.w) / 2);
+      const yy = a === 'top' ? by : a === 'bottom' ? by + bh - f.h : by + Math.floor((bh - f.h) / 2);
+      if (f.w > cw - pad * 2 || f.h > ch - pad * 2) overflow++;
+      rects.push({ id, group: g, cell: { x: cx, y: cy, w: cw, h: ch }, x, y: yy });
+    });
+    W = Math.max(W, cols * cw);
+    y += Math.ceil(n / cols) * ch;
+  }
+  return { W, H: y, rects, tags, overflow, uniform: mode !== 'group' ? uni : null };
+}
+function buildSheet() {
+  layout = computeLayout();
+  if (!layout) { sheet.width = sheet.height = 1; drawSheetView(); updateStats(); return; }
+  sheet.width = layout.W; sheet.height = layout.H;
+  const c = sheet.getContext('2d');
+  c.clearRect(0, 0, layout.W, layout.H);
+  if (S.bgout === 'keep' && S.det === 'color') { c.fillStyle = $('bgColor').value; c.fillRect(0, 0, layout.W, layout.H); }
+  for (const r of layout.rects) {
+    const f = S.frames.get(r.id);
+    c.save(); c.beginPath(); c.rect(r.cell.x, r.cell.y, r.cell.w, r.cell.h); c.clip();
+    c.drawImage(cutFrame(f), r.x, r.y); c.restore();
+  }
+  buildCount++;
+  drawSheetView(); updateStats();
+}
+function drawSheetView() {
+  const v = $('sheetView'); v.width = sheet.width; v.height = sheet.height;
+  const c = v.getContext('2d'); c.drawImage(sheet, 0, 0);
+  if (layout && $('showGrid').checked) {
+    c.save(); c.lineWidth = 1; c.setLineDash([4, 3]);
+    layout.rects.forEach(r => { c.strokeStyle = r.group.color; c.strokeRect(r.cell.x + .5, r.cell.y + .5, r.cell.w - 1, r.cell.h - 1); });
+    c.restore();
+  }
+}
+function updateStats() {
+  const has = !!layout;
+  $('stCount').textContent = has ? layout.rects.length : '–';
+  $('stGroups').textContent = has ? layout.tags.length : '–';
+  $('stCell').textContent = !has ? '–' : layout.uniform ? layout.uniform[0] + '×' + layout.uniform[1] : 'アニメごと';
+  $('stSheet').textContent = has ? layout.W + '×' + layout.H : '–';
+  const w = [];
+  if (has && layout.overflow) w.push(layout.overflow + ' コマがセルからはみ出しています（はみ出た部分は切れます）');
+  $('stWarn').textContent = w.join(' / '); $('stWarn').hidden = !w.length;
+  $('btnPng').disabled = $('btnJson').disabled = !has;
+}
+
+// ---- 元画像ビュー（枠の表示と操作） ----
+const ovl = $('ovl'), octx = ovl.getContext('2d');
+let drag = null; // {kind:'marquee'|'add'|'resize', ...}
+function sizeOverlay() {
+  const v = $('srcView'), dpr = window.devicePixelRatio || 1;
+  const w = v.clientWidth, h = v.clientHeight;
+  ovl.style.width = w + 'px'; ovl.style.height = h + 'px';
+  // 大きい画像を拡大表示したときにキャンバスが巨大にならないよう、画素数に上限を設けて解像度を落とす
+  const k = Math.min(dpr, Math.sqrt(16e6 / Math.max(1, w * h)));
+  ovl.width = Math.max(1, Math.round(w * k)); ovl.height = Math.max(1, Math.round(h * k));
+  drawOverlay();
+}
+function applyZoom() {
+  const z = $('zoom').value, wrap = $('srcWrap'), v = $('srcView');
+  wrap.classList.toggle('fit', z === 'fit');
+  wrap.classList.toggle('pixel', z !== 'fit' && +z >= 1);
+  v.style.width = z === 'fit' ? '' : Math.round(S.W * +z) + 'px';
+  v.style.height = z === 'fit' ? '' : Math.round(S.H * +z) + 'px';
+  sizeOverlay();
+}
+new ResizeObserver(sizeOverlay).observe($('srcView'));
+function drawOverlay() {
+  const c = octx, sx = ovl.width / Math.max(1, S.W), dpr = ovl.width / Math.max(1, ovl.clientWidth); // CSS 1px あたりのキャンバス画素数
+  c.clearRect(0, 0, ovl.width, ovl.height);
+  if (!S.src) return;
+  c.font = 'bold ' + Math.round(11 * dpr) + 'px ' + getComputedStyle(document.body).fontFamily;
+  c.textBaseline = 'top';
+  S.groups.forEach((g, gi) => g.ids.forEach((id, i) => {
+    const f = S.frames.get(id), sel = S.sel.has(id);
+    const x = f.x * sx, y = f.y * sx, w = f.w * sx, h = f.h * sx;
+    if (sel) { c.fillStyle = g.color + '55'; c.fillRect(x, y, w, h); }
+    c.lineWidth = (sel ? 2.5 : 1.25) * dpr; c.strokeStyle = g.color;
+    c.strokeRect(x, y, w, h);
+    if (w >= 16 * dpr || sel) {
+      const t = (gi + 1) + '-' + (i + 1), tw = c.measureText(t).width + 6 * dpr;
+      c.fillStyle = g.color; c.fillRect(x, y, tw, 14 * dpr);
+      c.fillStyle = '#fff'; c.fillText(t, x + 3 * dpr, y + 1.5 * dpr);
+    }
+  }));
+  if (S.sel.size === 1 && S.tool === 'select') {
+    const f = S.frames.get([...S.sel][0]);
+    if (f) {
+      c.fillStyle = '#fff'; c.strokeStyle = '#000'; c.lineWidth = dpr;
+      const hs = 4 * dpr, pts = [[f.x, f.y], [f.x + f.w, f.y], [f.x, f.y + f.h], [f.x + f.w, f.y + f.h], [f.x + f.w / 2, f.y], [f.x + f.w / 2, f.y + f.h], [f.x, f.y + f.h / 2], [f.x + f.w, f.y + f.h / 2]];
+      pts.forEach(([px, py]) => { c.fillRect(px * sx - hs, py * sx - hs, hs * 2, hs * 2); c.strokeRect(px * sx - hs, py * sx - hs, hs * 2, hs * 2); });
+    }
+  }
+  if (drag && (drag.kind === 'marquee' || drag.kind === 'add')) {
+    const r = normRect(drag.x0, drag.y0, drag.x1, drag.y1);
+    c.save(); c.setLineDash([5 * dpr, 4 * dpr]); c.lineWidth = 1.5 * dpr;
+    c.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--accent');
+    c.strokeRect(r.x * sx, r.y * sx, r.w * sx, r.h * sx); c.restore();
+  }
+}
+function normRect(x0, y0, x1, y1) {
+  const x = Math.max(0, Math.min(x0, x1)), y = Math.max(0, Math.min(y0, y1));
+  const xe = Math.min(S.W, Math.max(x0, x1)), ye = Math.min(S.H, Math.max(y0, y1));
+  return { x, y, w: Math.max(0, xe - x), h: Math.max(0, ye - y) };
+}
+// round = 画素の境目（枠の端）、floor = クリックした画素そのもの（スポイト・当たり判定）
+function toImg(e, snap = Math.round) {
+  const r = ovl.getBoundingClientRect();
+  return [snap((e.clientX - r.left) / r.width * S.W), snap((e.clientY - r.top) / r.height * S.H)];
+}
+function hitFrame(x, y) {
+  let best = null;
+  for (const f of S.frames.values()) {
+    if (x >= f.x && x < f.x + f.w && y >= f.y && y < f.y + f.h && (!best || f.w * f.h < best.w * best.h)) best = f;
+  }
+  return best;
+}
+function hitEdges(f, x, y) {
+  const tol = 6 * S.W / ovl.getBoundingClientRect().width;
+  const inX = x > f.x - tol && x < f.x + f.w + tol, inY = y > f.y - tol && y < f.y + f.h + tol;
+  if (!inX || !inY) return null;
+  const e = { l: Math.abs(x - f.x) <= tol, r: Math.abs(x - (f.x + f.w)) <= tol, t: Math.abs(y - f.y) <= tol, b: Math.abs(y - (f.y + f.h)) <= tol };
+  return e.l || e.r || e.t || e.b ? e : null;
+}
+ovl.addEventListener('pointerdown', (e) => {
+  if (!S.src || e.button !== 0) return;
+  const [x, y] = toImg(e), [px, py] = toImg(e, Math.floor);
+  if (S.tool === 'pick') {
+    const xx = Math.max(0, Math.min(S.W - 1, px)), yy = Math.max(0, Math.min(S.H - 1, py)), j = (yy * S.W + xx) * 4;
+    $('bgColor').value = rgbToHex(S.data[j], S.data[j + 1], S.data[j + 2]);
+    setSeg('detSeg', 'det', 'color'); syncLabels(); savePrefs();
+    setSeg('toolSeg', 'tool', 'select');
+    runDetect(); toast('背景色を ' + $('bgColor').value.toUpperCase() + ' にしました');
+    return;
+  }
+  ovl.setPointerCapture(e.pointerId);
+  if (S.tool === 'add') { drag = { kind: 'add', x0: x, y0: y, x1: x, y1: y }; return; }
+  if (S.sel.size === 1) {
+    const f = S.frames.get([...S.sel][0]), ed = f && hitEdges(f, x, y);
+    if (ed) { drag = { kind: 'resize', f, ed, orig: { ...f }, x0: x, y0: y, pushed: false }; return; }
+  }
+  const f = hitFrame(px, py), add = e.shiftKey || e.ctrlKey || e.metaKey;
+  if (f) {
+    if (add) { S.sel.has(f.id) ? S.sel.delete(f.id) : S.sel.add(f.id); }
+    else if (!S.sel.has(f.id)) S.sel = new Set([f.id]);
+    const g = groupOf(f.id); if (g) S.activeG = g.id;
+    refreshSel();
+    return;
+  }
+  drag = { kind: 'marquee', x0: x, y0: y, x1: x, y1: y, add };
+});
+ovl.addEventListener('pointermove', (e) => {
+  if (!S.src) return;
+  const [x, y] = toImg(e);
+  if (!drag) {
+    let cur = S.tool === 'select' ? 'default' : 'crosshair';
+    if (S.tool === 'select' && S.sel.size === 1) {
+      const f = S.frames.get([...S.sel][0]), ed = f && hitEdges(f, x, y);
+      if (ed) cur = (ed.l && ed.t) || (ed.r && ed.b) ? 'nwse-resize' : (ed.r && ed.t) || (ed.l && ed.b) ? 'nesw-resize' : ed.l || ed.r ? 'ew-resize' : 'ns-resize';
+    }
+    ovl.style.cursor = cur;
+    return;
+  }
+  if (drag.kind === 'resize') {
+    const { f, ed, orig } = drag, dx = x - drag.x0, dy = y - drag.y0;
+    let x0 = orig.x, y0 = orig.y, x1 = orig.x + orig.w, y1 = orig.y + orig.h;
+    if (ed.l) x0 = Math.min(x1 - 1, Math.max(0, x0 + dx)); if (ed.r) x1 = Math.max(x0 + 1, Math.min(S.W, x1 + dx));
+    if (ed.t) y0 = Math.min(y1 - 1, Math.max(0, y0 + dy)); if (ed.b) y1 = Math.max(y0 + 1, Math.min(S.H, y1 + dy));
+    // 元に戻す記録は実際に範囲が変わったときに積む（クリックだけで「やり直す」の履歴を消さない）
+    if (!drag.pushed && (x0 !== f.x || y0 !== f.y || x1 - x0 !== f.w || y1 - y0 !== f.h)) { pushUndo(); drag.pushed = true; }
+    Object.assign(f, { x: x0, y: y0, w: x1 - x0, h: y1 - y0 });
+    drawOverlay(); return;
+  }
+  drag.x1 = x; drag.y1 = y; drawOverlay();
+});
+function endDrag() {
+  if (!drag) return;
+  const d = drag; drag = null;
+  if (d.kind === 'resize') {
+    // 手で範囲を変えたコマは、塊の区別をやめて矩形内のコマ画素すべてを使う
+    if (d.f.x !== d.orig.x || d.f.y !== d.orig.y || d.f.w !== d.orig.w || d.f.h !== d.orig.h) { d.f.labels = null; refresh(); }
+    else { if (d.pushed) S.undo.pop(); drawOverlay(); }
+    return;
+  }
+  const r = normRect(d.x0, d.y0, d.x1, d.y1);
+  if (d.kind === 'add') {
+    if (r.w >= 2 && r.h >= 2) addFrame(r.x, r.y, r.w, r.h); else drawOverlay();
+    return;
+  }
+  if (!d.add) S.sel.clear();
+  if (r.w > 1 || r.h > 1) {
+    for (const f of S.frames.values()) if (f.x < r.x + r.w && f.x + f.w > r.x && f.y < r.y + r.h && f.y + f.h > r.y) S.sel.add(f.id);
+  }
+  refreshSel();
+}
+ovl.addEventListener('pointerup', endDrag);
+ovl.addEventListener('pointercancel', endDrag);
+
+// ---- アニメ一覧 ----
+const thumbCanvases = new Map();
+function renderGroups() {
+  const box = $('groupList');
+  box.textContent = ''; thumbCanvases.clear();
+  if (!S.groups.length) { box.innerHTML = '<div class="empty">' + (S.src ? 'コマが見つかりません。許容値や背景色を調整してください' : '画像を読み込むとコマがここに並びます') + '</div>'; return; }
+  const dpr = window.devicePixelRatio || 1;
+  S.groups.forEach((g, gi) => {
+    const card = document.createElement('div');
+    card.className = 'gcard' + (g.id === S.activeG ? ' active' : '');
+    const head = document.createElement('div'); head.className = 'ghead';
+    const dot = document.createElement('span'); dot.className = 'gdot'; dot.style.background = g.color;
+    const num = document.createElement('span'); num.className = 'mono text-sm'; num.textContent = (gi + 1) + '.';
+    const name = document.createElement('input'); name.className = 'input gname'; name.value = g.name; name.setAttribute('aria-label', 'アニメ名');
+    name.addEventListener('change', () => { pushUndo(); g.name = name.value.trim() || 'anim' + g.id; refreshLight(); });
+    const cnt = document.createElement('span'); cnt.className = 'hint'; cnt.textContent = g.ids.length + ' コマ';
+    head.append(dot, num, name, cnt);
+    const btn = (label, title, fn) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'btn btn-sm btn-ghost'; b.textContent = label; b.title = title; b.onclick = fn; head.append(b); return b; };
+    btn('全選択', 'このアニメのコマをすべて選択', () => { S.sel = new Set(g.ids); S.activeG = g.id; refreshSel(); });
+    btn('位置順', '元画像での位置（行優先）で並べ直す', () => { pushUndo(); g.ids = readOrder(g.ids.map(id => S.frames.get(id)), true).flat().map(f => f.id); refresh(); });
+    btn('逆順', '並び順を逆にする', () => { pushUndo(); g.ids.reverse(); refresh(); });
+    btn('↑', '上へ', () => { if (gi > 0) { pushUndo(); [S.groups[gi - 1], S.groups[gi]] = [S.groups[gi], S.groups[gi - 1]]; refresh(); } }).disabled = gi === 0;
+    btn('↓', '下へ', () => { if (gi < S.groups.length - 1) { pushUndo(); [S.groups[gi + 1], S.groups[gi]] = [S.groups[gi], S.groups[gi + 1]]; refresh(); } }).disabled = gi === S.groups.length - 1;
+    btn('前と結合', '1つ上のアニメの後ろにつなげる', () => { if (gi > 0) { pushUndo(); S.groups[gi - 1].ids.push(...g.ids); g.ids = []; pruneGroups(); refresh(); } }).disabled = gi === 0;
+    btn('削除', 'このアニメとコマを消す', () => { pushUndo(); g.ids.forEach(id => S.frames.delete(id)); g.ids = []; pruneGroups(); S.sel.clear(); refresh(); }).classList.add('danger');
+    card.addEventListener('click', (e) => { if (e.target === card || e.target === head) { S.activeG = g.id; refreshSel(); } });
+
+    const strip = document.createElement('div'); strip.className = 'thumbs';
+    g.ids.forEach((id, i) => {
+      const t = document.createElement('div'); t.className = 'thumb bg-checker' + (S.sel.has(id) ? ' sel' : ''); t.draggable = true; t.dataset.id = id;
+      const cv = mk(Math.round(56 * dpr), Math.round(56 * dpr)); t.append(cv);
+      const idx = document.createElement('span'); idx.className = 'idx'; idx.textContent = i + 1; t.append(idx);
+      thumbCanvases.set(id, cv);
+      t.addEventListener('click', (e) => {
+        if (e.shiftKey || e.ctrlKey || e.metaKey) { S.sel.has(id) ? S.sel.delete(id) : S.sel.add(id); }
+        else S.sel = new Set([id]);
+        S.activeG = g.id; refreshSel();
+      });
+      t.addEventListener('dragstart', (e) => {
+        dragIds = S.sel.has(id) ? orderedSel() : [id];
+        e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', String(id));
+      });
+      t.addEventListener('dragover', (e) => {
+        if (!dragIds) return; e.preventDefault(); e.stopPropagation();
+        const r = t.getBoundingClientRect(), after = e.clientX > r.left + r.width / 2;
+        clearDropMarks(); t.classList.add(after ? 'drop-after' : 'drop-before');
+      });
+      t.addEventListener('drop', (e) => {
+        if (!dragIds) return; e.preventDefault(); e.stopPropagation();
+        const r = t.getBoundingClientRect(), after = e.clientX > r.left + r.width / 2;
+        const ids = dragIds; dragIds = null; clearDropMarks();
+        let before = after ? g.ids[i + 1] : id;
+        while (before != null && ids.includes(before)) before = g.ids[g.ids.indexOf(before) + 1];
+        if (ids.includes(id) && ids.length === 1) return;
+        moveIds(ids, g.id, before == null ? null : before);
+      });
+      t.addEventListener('dragend', () => { dragIds = null; clearDropMarks(); });
+      strip.append(t);
+    });
+    strip.addEventListener('dragover', (e) => { if (!dragIds) return; e.preventDefault(); clearDropMarks(); strip.classList.add('over-end'); });
+    strip.addEventListener('dragleave', () => strip.classList.remove('over-end'));
+    strip.addEventListener('drop', (e) => { if (!dragIds) return; e.preventDefault(); const ids = dragIds; dragIds = null; clearDropMarks(); moveIds(ids, g.id, null); });
+    card.append(head, strip);
+    box.append(card);
+  });
+  drawThumbs();
+}
+let dragIds = null;
+function clearDropMarks() { document.querySelectorAll('.drop-before,.drop-after,.over-end').forEach(el => el.classList.remove('drop-before', 'drop-after', 'over-end')); }
+function drawThumbs() {
+  for (const [id, cv] of thumbCanvases) {
+    const f = S.frames.get(id); if (!f) continue;
+    const src = cutFrame(f), c = cv.getContext('2d'), s = Math.min(cv.width / f.w, cv.height / f.h, 4 * (window.devicePixelRatio || 1));
+    c.clearRect(0, 0, cv.width, cv.height);
+    c.imageSmoothingEnabled = s < 1;
+    const w = f.w * s, h = f.h * s;
+    c.drawImage(src, (cv.width - w) / 2, (cv.height - h) / 2, w, h);
+  }
+}
+function refreshSelThumbs() {
+  document.querySelectorAll('.thumb').forEach(t => t.classList.toggle('sel', S.sel.has(+t.dataset.id)));
+  document.querySelectorAll('.gcard').forEach((c, i) => c.classList.toggle('active', S.groups[i] && S.groups[i].id === S.activeG));
+}
+
+// ---- アニメーション確認 ----
+let playing = true, animFrame = 0, lastT = 0;
+function fillAnimSelect() {
+  const sel = $('animGroup'), cur = +sel.value;
+  sel.textContent = '';
+  S.groups.forEach((g, i) => { const o = document.createElement('option'); o.value = g.id; o.textContent = (i + 1) + '. ' + g.name + '（' + g.ids.length + '）'; sel.append(o); });
+  if (S.groups.some(g => g.id === cur)) sel.value = cur;
+  else if (S.groups.some(g => g.id === S.activeG)) sel.value = S.activeG;
+}
+function drawAnim() {
+  const v = $('animView'), c = v.getContext('2d');
+  if (!layout) { v.width = v.height = 1; $('animNote').textContent = ''; return; }
+  const gid = +$('animGroup').value, rs = layout.rects.filter(r => r.group.id === gid);
+  if (!rs.length) { v.width = v.height = 1; $('animNote').textContent = ''; return; }
+  animFrame %= rs.length;
+  const r = rs[animFrame], s = Math.max(1, Math.min(4, Math.floor(320 / Math.max(r.cell.w, r.cell.h)))) || 1;
+  const sc = Math.min(s, 320 / Math.max(r.cell.w, r.cell.h));
+  const w = Math.max(1, Math.round(r.cell.w * sc)), h = Math.max(1, Math.round(r.cell.h * sc));
+  if (v.width !== w || v.height !== h) { v.width = w; v.height = h; }
+  c.clearRect(0, 0, w, h); c.imageSmoothingEnabled = sc < 1;
+  c.drawImage(sheet, r.cell.x, r.cell.y, r.cell.w, r.cell.h, 0, 0, w, h);
+  $('animNote').textContent = (animFrame + 1) + ' / ' + rs.length + ' コマ（セル ' + r.cell.w + '×' + r.cell.h + '）';
+}
+function tick(t) {
+  if (playing && layout && t - lastT >= 1000 / +$('fps').value) { lastT = t; animFrame++; drawAnim(); }
+  requestAnimationFrame(tick);
+}
+
+// ---- 再描画のまとめ ----
+let pendBuild = false;
+function refresh() {
+  pruneGroups();
+  drawOverlay(); renderGroups(); fillAnimSelect(); updateSelNote();
+  if (pendBuild) return; pendBuild = true;
+  requestAnimationFrame(() => { pendBuild = false; buildSheet(); drawAnim(); });
+}
+// 名前の変更だけなら一覧は作り直さない（シートは JSON のタグ名に使うので組み直す）
+function refreshLight() {
+  fillAnimSelect();
+  if (pendBuild) return; pendBuild = true;
+  requestAnimationFrame(() => { pendBuild = false; buildSheet(); });
+}
+function refreshSel() { drawOverlay(); refreshSelThumbs(); updateSelNote(); }
+$('sbNewGroup').onclick = newGroupFromSel; $('sbMerge').onclick = mergeSel; $('sbDelete').onclick = deleteSel;
+$('sbClear').onclick = () => { S.sel.clear(); refreshSel(); };
+$('sbMoveTo').addEventListener('change', (e) => {
+  const gid = +e.target.value; e.target.value = '';
+  if (gid && S.sel.size) { S.activeG = gid; moveIds(orderedSel(), gid, null); toast('選択したコマを移動しました'); }
+});
+function updateSelBar() {
+  const n = S.sel.size, bar = $('selBar');
+  bar.hidden = n === 0; document.body.classList.toggle('has-selbar', n > 0);
+  if (!n) return;
+  $('selBarCount').textContent = n + ' コマ選択中';
+  $('sbMerge').disabled = n < 2;
+  const sel = $('sbMoveTo'); sel.textContent = '';
+  const o0 = document.createElement('option'); o0.value = ''; o0.textContent = '既存のアニメへ移動…'; sel.append(o0);
+  S.groups.forEach((g, i) => { const o = document.createElement('option'); o.value = g.id; o.textContent = (i + 1) + '. ' + g.name + ' の末尾へ'; sel.append(o); });
+}
+function updateSelNote() {
+  updateSelBar();
+  const n = S.sel.size;
+  $('btnMerge').disabled = n < 2; $('btnDelete').disabled = $('btnNewGroup').disabled = n < 1;
+  $('btnUndo').disabled = !S.undo.length; $('btnRedo').disabled = !S.redo.length;
+  let t;
+  if (!S.src) t = '画像を読み込むと、検出したコマの枠がここに表示されます。';
+  else if (n === 0) t = S.frames.size + ' コマを検出' + (S.dropped ? '（小さすぎる塊 ' + S.dropped + ' 個は無視）' : '') + '。枠をクリックで選択、Shift/Ctrl で追加選択、空白をドラッグで範囲選択。';
+  else if (n === 1) { const f = S.frames.get([...S.sel][0]); t = '1コマ選択中（' + f.w + '×' + f.h + '、位置 ' + f.x + ',' + f.y + '）。辺や角をドラッグで範囲を調整できます。'; }
+  else t = n + ' コマ選択中。画面下のバーから、新しいアニメへの切り出し・移動・結合・削除ができます。';
+  $('selNote').textContent = t;
+}
+
+// ---- 書き出し ----
+function uniqNames(list) {
+  const used = new Set();
+  return list.map(n => { let k = n, i = 2; while (used.has(k)) k = n + '_' + (i++); used.add(k); return k; });
+}
+function asepriteJson(fmt) {
+  const dur = Math.round(1000 / Math.max(1, +$('fps').value || 1));
+  const names = uniqNames(layout.tags.map(t => t.name));
+  const entries = [];
+  layout.tags.forEach((t, ti) => {
+    for (let i = t.from; i <= t.to; i++) {
+      const c = layout.rects[i].cell;
+      entries.push([names[ti] + ' ' + (i - t.from) + '.png', {
+        frame: { x: c.x, y: c.y, w: c.w, h: c.h }, rotated: false, trimmed: false,
+        spriteSourceSize: { x: 0, y: 0, w: c.w, h: c.h }, sourceSize: { w: c.w, h: c.h }, duration: dur,
+      }]);
+    }
+  });
+  const frames = fmt === 'array' ? entries.map(([filename, v]) => Object.assign({ filename }, v)) : Object.fromEntries(entries);
+  return {
+    frames,
+    meta: {
+      app: 'https://www.aseprite.org/', version: '1.3', image: pngName(), format: 'RGBA8888',
+      size: { w: layout.W, h: layout.H }, scale: '1',
+      frameTags: layout.tags.map((t, ti) => ({ name: names[ti], from: t.from, to: t.to, direction: 'forward', color: t.color + 'ff' })),
+      layers: [], slices: [],
+    },
+  };
+}
+function pngName() { return ($('baseName').value.trim().replace(/\.(png|json)$/i, '') || 'sprite_sheet') + '.png'; }
+$('btnPng').onclick = () => { if (!layout) return; IT.canvasToBlob(sheet).then(b => IT.saveFile(pngName(), b), () => toast('PNGを作成できませんでした')); };
+$('btnJson').onclick = () => { if (!layout) return; IT.saveFile(pngName().replace(/\.png$/, '.json'), new Blob([JSON.stringify(asepriteJson($('jsonFormat').value), null, 2)], { type: 'application/json' })); };
+
+// ---- サンプル（コードで図形を描く。素材ファイルは使わない） ----
+function drawSample() {
+  const W = 960, H = 600, c = mk(W, H), x = c.getContext('2d');
+  x.fillStyle = '#5a5a5a'; x.fillRect(0, 0, W, H);
+  // 1段目: 広がる光の玉。小さい最初の2コマは縦に積んである
+  const orb = (cx, cy, r) => {
+    const g = x.createRadialGradient(cx, cy, 0, cx, cy, r);
+    g.addColorStop(0, '#ffffff'); g.addColorStop(0.6, '#fff6c8'); g.addColorStop(0.85, '#f0a830'); g.addColorStop(1, 'rgba(240,120,40,0)');
+    x.fillStyle = g; x.beginPath(); x.arc(cx, cy, r, 0, Math.PI * 2); x.fill();
+  };
+  orb(40, 30, 12); orb(40, 95, 24);
+  [[130, 70, 38], [250, 75, 50], [395, 80, 62], [560, 85, 74], [735, 90, 80]].forEach(a => orb(...a));
+  // 2段目: 回る星（位置が少しずつずれている）
+  const star = (cx, cy, r, rot) => {
+    x.fillStyle = '#7fd3ff'; x.strokeStyle = '#1f6f9f'; x.lineWidth = 3; x.beginPath();
+    for (let i = 0; i < 10; i++) { const a = rot + i * Math.PI / 5, rr = i % 2 ? r * 0.45 : r; x.lineTo(cx + Math.cos(a) * rr, cy + Math.sin(a) * rr); }
+    x.closePath(); x.fill(); x.stroke();
+  };
+  for (let i = 0; i < 8; i++) star(60 + i * 112 + (i % 3) * 7, 255 + ((i * 37) % 23), 36, i * Math.PI / 20);
+  // 3段目: 跳ねる四角
+  for (let i = 0; i < 6; i++) {
+    const h = [70, 56, 44, 56, 70, 80][i], w = [44, 52, 62, 52, 44, 40][i], cx = 70 + i * 120, by = 430;
+    x.fillStyle = '#9be070'; x.strokeStyle = '#3d7a1f'; x.lineWidth = 3;
+    x.fillRect(cx - w / 2, by - h, w, h); x.strokeRect(cx - w / 2, by - h, w, h);
+  }
+  // 4段目: 離れた粒でできた火花（結合距離のテスト用）
+  for (let i = 0; i < 7; i++) {
+    const cx = 70 + i * 120, cy = 530, d = 8 + i * 5, n = Math.max(5, Math.round(Math.PI * 2 * d / 10));
+    x.fillStyle = '#ffd34d';
+    for (let k = 0; k < n; k++) { const a = k / n * Math.PI * 2 + i * 0.3; x.beginPath(); x.arc(cx + Math.cos(a) * d, cy + Math.sin(a) * d, 3, 0, Math.PI * 2); x.fill(); }
+  }
+  // ゴミ点
+  x.fillStyle = '#6a6a6a'; x.fillRect(900, 20, 2, 2); x.fillRect(20, 580, 1, 1);
+  return c;
+}
+$('btnSample').onclick = () => setSource(drawSample(), 'sample_effects.png');
+
+// ---- UI 結線 ----
+function setSeg(segId, attr, val) {
+  document.querySelectorAll('#' + segId + ' button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset[attr] === val)));
+  S[attr] = val;
+  if (segId === 'toolSeg') { ovl.className = 'tool-' + val; drawOverlay(); }
+}
+function segWire(segId, attr, after) {
+  document.querySelectorAll('#' + segId + ' button').forEach(b => b.addEventListener('click', () => { setSeg(segId, attr, b.dataset[attr]); syncLabels(); after && after(); }));
+}
+function syncLabels() {
+  ['tol', 'gap', 'minSize', 'soft', 'fps'].forEach(id => { $(id + 'V').textContent = $(id).value; });
+  $('bgHex').textContent = $('bgColor').value.toUpperCase();
+  $('bgRow').hidden = S.det !== 'color';
+  $('tolHint').textContent = S.det === 'color'
+    ? '背景色との差（RGB各成分の最大差）がこれより大きい画素をコマとみなします'
+    : '不透明度（0〜255）がこれより大きい画素をコマとみなします';
+  $('clearOpts').hidden = S.bgout !== 'clear' || S.det !== 'color';
+  $('fixedRow').hidden = $('cellMode').value !== 'fixed';
+}
+let detTimer = 0;
+function scheduleDetect() { syncLabels(); clearTimeout(detTimer); detTimer = setTimeout(() => runDetect(), 200); }
+['tol', 'gap', 'minSize', 'bgColor'].forEach(id => $(id).addEventListener('input', scheduleDetect));
+$('autoMode').addEventListener('change', () => { if (!S.src) return; pushUndo(); autoGroup(); S.sel.clear(); refresh(); });
+$('btnRedetect').onclick = () => runDetect();
+$('btnPickCorner').onclick = () => { if (!S.src) return; $('bgColor').value = rgbToHex(S.data[0], S.data[1], S.data[2]); savePrefs(); scheduleDetect(); };
+segWire('detSeg', 'det', () => S.src && runDetect());
+segWire('bgOutSeg', 'bgout', () => S.src && refresh());
+segWire('anchorSeg', 'anchor', () => S.src && refresh());
+segWire('toolSeg', 'tool', () => { drag = null; drawOverlay(); });
+['soft', 'unblend', 'cellMode', 'cellW', 'cellH', 'pad', 'maxCols', 'mult4'].forEach(id => $(id).addEventListener('input', () => { syncLabels(); if (S.src) refresh(); }));
+$('showGrid').addEventListener('input', drawSheetView);
+$('fps').addEventListener('input', syncLabels);
+$('zoom').addEventListener('change', applyZoom);
+$('animGroup').addEventListener('change', () => { animFrame = 0; drawAnim(); });
+$('btnPlay').onclick = () => { playing = !playing; $('btnPlay').textContent = playing ? '一時停止' : '再生'; };
+$('btnMerge').onclick = mergeSel; $('btnDelete').onclick = deleteSel; $('btnNewGroup').onclick = newGroupFromSel;
+$('btnUndo').onclick = undo; $('btnRedo').onclick = redo;
+document.addEventListener('keydown', (e) => {
+  const tag = (e.target.tagName || '').toLowerCase();
+  if (tag === 'input' || tag === 'select' || tag === 'textarea') return;
+  const k = e.key.toLowerCase();
+  if ((e.ctrlKey || e.metaKey) && k === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
+  if ((e.ctrlKey || e.metaKey) && k === 'y') { e.preventDefault(); redo(); return; }
+  if ((e.ctrlKey || e.metaKey) && k === 'a') { if (!S.src) return; e.preventDefault(); S.sel = new Set(S.frames.keys()); refreshSel(); return; }
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  if (k === 'delete' || k === 'backspace') { e.preventDefault(); deleteSel(); }
+  else if (k === 'm') mergeSel();
+  else if (k === 'g') newGroupFromSel();
+  else if (k === 'escape') {
+    if (drag && drag.kind === 'resize') { Object.assign(drag.f, drag.orig); if (drag.pushed) S.undo.pop(); drag = null; drawOverlay(); updateSelNote(); return; }
+    if (drag) { drag = null; drawOverlay(); return; }
+    S.sel.clear(); refreshSel();
+  }
+  else if (k === 'v') setSeg('toolSeg', 'tool', 'select');
+  else if (k === 'r') setSeg('toolSeg', 'tool', 'add');
+  else if (k === 'i') setSeg('toolSeg', 'tool', 'pick');
+});
+IT.initDrop({ zone: 'drop', input: 'fileInput', accept: f => f.type.startsWith('image/') || /\.(bmp|png|jpe?g|webp|gif)$/i.test(f.name), onFiles: files => loadFile(files[0]), emptyMessage: '画像ファイルが見つかりませんでした' });
+
+// ---- 設定の記憶 ----
+// IT.store の frame-sorter:settings に 1 オブジェクトで保存する（背景色・出力名は画像ごとに決まるので保存しない）
+const PREFS_KEY = 'frame-sorter:settings';
+const PREF_IDS = ['tol', 'gap', 'minSize', 'autoMode', 'soft', 'unblend', 'cellMode', 'cellW', 'cellH', 'pad', 'maxCols', 'mult4', 'jsonFormat', 'fps', 'showGrid', 'zoom'];
+const PREF_SEGS = { bgout: 'bgOutSeg', anchor: 'anchorSeg' };
+function readPrefs() {
+  const o = {};
+  PREF_IDS.forEach(id => { const el = $(id); o[id] = el.type === 'checkbox' ? el.checked : el.value; });
+  for (const k in PREF_SEGS) o[k] = S[k];
+  return o;
+}
+const PREF_DEFAULTS = readPrefs();
+let restoringPrefs = false;
+function savePrefs() { if (!restoringPrefs) IT.store.set(PREFS_KEY, readPrefs()); }
+function applyPrefs(p) {
+  restoringPrefs = true;
+  try {
+    PREF_IDS.forEach(id => {
+      const el = $(id), v = p[id];
+      if (el.type === 'checkbox') { if (typeof v === 'boolean') el.checked = v; return; }
+      if (typeof v !== 'string') return;
+      if (el.tagName === 'SELECT') { if ([...el.options].some(o => o.value === v)) el.value = v; return; }
+      const n = Number(v), lo = Math.min(+el.min, +PREF_DEFAULTS[id]);
+      if (v.trim() !== '' && Number.isInteger(n) && n >= lo && n <= +el.max) el.value = String(n);
+    });
+    for (const k in PREF_SEGS) {
+      const ok = typeof p[k] === 'string' && [...document.querySelectorAll('#' + PREF_SEGS[k] + ' button')].some(b => b.dataset[k] === p[k]);
+      if (ok) setSeg(PREF_SEGS[k], k, p[k]);
+    }
+  } finally { restoringPrefs = false; }
+  syncLabels(); applyZoom();
+  if (S.src) runDetect();
+}
+PREF_IDS.forEach(id => ['input', 'change'].forEach(t => $(id).addEventListener(t, savePrefs)));
+Object.values(PREF_SEGS).forEach(seg => document.querySelectorAll('#' + seg + ' button').forEach(b => b.addEventListener('click', savePrefs)));
+$('btnResetPrefs').onclick = () => { applyPrefs(PREF_DEFAULTS); IT.store.remove(PREFS_KEY); toast('設定をリセットしました'); };
+{ const saved = IT.store.get(PREFS_KEY); if (saved && typeof saved === 'object') applyPrefs(saved); }
+
+// 起動
+syncLabels(); updateSelNote(); updateStats(); applyZoom();
+requestAnimationFrame(tick);
+</script>
+</body>
+</html>
