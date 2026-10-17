@@ -26,6 +26,8 @@ def test_card_body_click_opens_tool(browser: Browser, base_url: str, target: str
             card = page.locator(".card").nth(i)
             href = card.locator("h2 a").get_attribute("href")
             # 要素の上はリンクの重ね合わせ(::after)が覆うので、Playwright の要素クリックではなく座標でクリックする
+            # 画面外のカードは座標クリックが届かないので、先にスクロールして表示させる
+            card.locator(target).first.scroll_into_view_if_needed()
             box = card.locator(target).first.bounding_box()
             assert box is not None
             page.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)

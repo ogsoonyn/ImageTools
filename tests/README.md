@@ -6,6 +6,7 @@
 - 各ツールで「サンプルを読み込む」を押して `samples/` のサンプルを読み込み、「PNGを保存」「JSONを保存」で中身のある PNG / JSON がダウンロードされること
 - Keyout Sprite Packer の設定が `localStorage` に保存されてリロード後に復元され、「設定をリセット」で初期値に戻ること。`localStorage` が使えない・値が壊れている場合もエラーにならないこと(`test_keyout_settings.py`)
 - アイコン一括生成の ZIP に各プリセットのファイル(ICO・PNG・site.webmanifest・Contents.json)が入ること、設定が保存・復元され「設定をリセット」で初期値に戻ること(`test_icon_generator.py`)
+- スクショ スプライトシートで、貼り付けた画像がコマとして順に追加されること、変化のある範囲の検出・背景の透過・位置揃え・コマごとの微調整が効くこと、設定が保存・復元され「設定をリセット」で初期値に戻ること(`test_screenshot_sprite_sheet.py`)
 
 Google Fonts へのリクエストはテスト内で空の応答に差し替えています(外部CDNの一時的な不調でテストが落ちないように)。サンプルは `fetch` で読み込むため、`file://` ではなく HTTP 経由で開く必要があります。
 
