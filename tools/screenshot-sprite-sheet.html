@@ -224,25 +224,23 @@ h1{text-wrap:balance}
 
       <section class="flex flex-col gap-2">
         <h2 class="sec-title">位置の揃え（全コマ共通）</h2>
+        <div class="join" role="group" aria-label="揃える端" id="anchorSeg">
+          <button class="btn btn-sm" type="button" data-anchor="bottom" aria-pressed="true">下端</button>
+          <button class="btn btn-sm" type="button" data-anchor="top" aria-pressed="false">上端</button>
+          <button class="btn btn-sm" type="button" data-anchor="left" aria-pressed="false">左端</button>
+          <button class="btn btn-sm" type="button" data-anchor="right" aria-pressed="false">右端</button>
+          <button class="btn btn-sm" type="button" data-anchor="center" aria-pressed="false">中央</button>
+          <button class="btn btn-sm" type="button" data-anchor="none" aria-pressed="false">揃えない</button>
+        </div>
+        <input type="hidden" id="anchor" value="bottom">
         <div class="field">
-          <label for="alignH" class="text-sm">横</label>
-          <select class="select" id="alignH">
-            <option value="none">揃えない</option>
-            <option value="left">左</option>
-            <option value="center" selected>中央</option>
-            <option value="right">右</option>
+          <label for="cellMode" class="text-sm">セルの大きさ</label>
+          <select class="select" id="cellMode">
+            <option value="crop">トリミング範囲のまま</option>
+            <option value="fit">絵に合わせて詰める</option>
           </select>
-          <label for="alignV" class="text-sm">縦</label>
-          <select class="select" id="alignV">
-            <option value="none">揃えない</option>
-            <option value="top">上</option>
-            <option value="middle">中央</option>
-            <option value="bottom" selected>下</option>
-          </select>
-          <label for="padX" class="text-sm">横の空き px</label>
-          <input class="input" type="number" id="padX" min="0" max="1024" step="1" value="0">
-          <label for="padY" class="text-sm">縦の空き px</label>
-          <input class="input" type="number" id="padY" min="0" max="1024" step="1" value="0">
+          <label for="cellPad" class="text-sm">絵の周りの余白</label>
+          <input class="input" type="number" id="cellPad" min="0" max="1024" step="1" value="0">
         </div>
         <p class="hint" id="alignHint"></p>
       </section>
@@ -880,7 +878,11 @@ function rebuild() {
     return;
   }
   const o = opts(), r = effectiveCrop();
-  const cw = Math.max(1, Math.round(r.w * o.scale)), ch = Math.max(1, Math.round(r.h * o.scale));
+  const ko = keyOpts();
+  // 等倍で切り出して背景を抜いた結果（コマごとにキャッシュ）
+  const entries = frames.map((f) => keyedCell(f, r, ko));
+  const g = groupBox(entries, r, alignOpts(!!ko));
+  const cw = Math.max(1, Math.round(g.w * o.scale)), ch = Math.max(1, Math.round(g.h * o.scale));
   const cols = Math.min(n, o.cols || Math.ceil(Math.sqrt(n)));
   const rows = Math.ceil(n / cols);
   const W = o.margin * 2 + cols * cw + (cols - 1) * o.spacing;
@@ -896,15 +898,13 @@ function rebuild() {
   sheet.width = W; sheet.height = H;
   sctx.clearRect(0, 0, W, H);
   sctx.imageSmoothingEnabled = o.smooth; sctx.imageSmoothingQuality = "high";
-  const ko = keyOpts();
-  const al = alignOpts(!!ko);
   let overflowChanged = false;
   const rects = frames.map((f, i) => {
     const x = o.margin + (i % cols) * (cw + o.spacing), y = o.margin + Math.floor(i / cols) * (ch + o.spacing);
-    // 等倍で切り出して背景を抜いてから、倍率をかけて配置する（範囲が元画像からはみ出す部分は透明）
-    const placed = placeCell(keyedCell(f, r, ko), f, al);
+    // セルの中に揃えて描いてから、倍率をかけて配置する（範囲が元画像からはみ出す部分は透明）
+    const placed = placeCell(entries[i], f, g);
     if (!!f.overflow !== placed.overflow) { f.overflow = placed.overflow; overflowChanged = true; }
-    sctx.drawImage(placed.canvas, 0, 0, r.w, r.h, x, y, cw, ch);
+    sctx.drawImage(placed.canvas, 0, 0, g.w, g.h, x, y, cw, ch);
     return { x, y, w: cw, h: ch };
   });
   if (overflowChanged) renderStrip();
@@ -989,11 +989,11 @@ $("keyColor").addEventListener("input", () => { $("keyManual").checked = true; }
 ["bgMode", "keyAuto", "keyManual"].forEach((id) => $(id).addEventListener("change", () => { syncBgUi(); savePrefs(); requestRebuild(); }));
 
 // ---- 位置の揃えと微調整 ----
+// コマ整列ツールと同じ揃え方: 全コマの絵の最大幅・最大高さの枠をセル中央に置き、
+// 各コマの絵はその枠の中で選んだ端に揃える（もう一方の向きは中央）。「中央」は上下左右とも中央
 function alignOpts(keyed) {
-  return {
-    h: keyed ? $("alignH").value : "none", v: keyed ? $("alignV").value : "none",
-    padX: Math.max(0, Math.floor(+$("padX").value || 0)), padY: Math.max(0, Math.floor(+$("padY").value || 0)),
-  };
+  const fit = keyed && $("anchor").value !== "none" && $("cellMode").value === "fit";
+  return { anchor: keyed ? $("anchor").value : "none", fit, pad: fit ? Math.max(0, Math.floor(+$("cellPad").value || 0)) : 0 };
 }
 // 不透明な画素（α > 16）を囲む矩形。ぼかしで残ったごく薄い画素は無視する
 function contentBox(c) {
@@ -1004,43 +1004,58 @@ function contentBox(c) {
   }
   return x1 < 0 ? null : { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
 }
+// セルの大きさ（等倍）と、揃えの基準になる枠を決める。揃えないときはトリミング範囲がそのままセルになる
+function groupBox(entries, r, al) {
+  const g = { anchor: "none", w: r.w, h: r.h, bx: 0, by: 0, bw: r.w, bh: r.h };
+  if (al.anchor === "none") return g;
+  const boxes = entries.map((e) => (e.box === undefined ? (e.box = contentBox(e.cell)) : e.box)).filter(Boolean);
+  if (!boxes.length) return g;
+  g.anchor = al.anchor;
+  g.bw = Math.max(...boxes.map((b) => b.w)); g.bh = Math.max(...boxes.map((b) => b.h));
+  if (al.fit) { g.w = g.bw + al.pad * 2; g.h = g.bh + al.pad * 2; }
+  g.bx = Math.floor((g.w - g.bw) / 2); g.by = Math.floor((g.h - g.bh) / 2);
+  return g;
+}
 const placedCanvas = document.createElement("canvas");
-// 絵の範囲をセル内で揃え、コマごとのずれ（dx, dy）を足して描く。セルの大きさはトリミング範囲のまま
-function placeCell(entry, f, al) {
-  const cell = entry.cell;
-  const box0 = () => (entry.box === undefined ? (entry.box = contentBox(cell)) : entry.box);
-  const w = cell.width, h = cell.height, out = placedCanvas;
+// 絵を揃えの枠の中に置き、コマごとのずれ（dx, dy）を足して描く
+function placeCell(entry, f, g) {
+  const cell = entry.cell, w = g.w, h = g.h, out = placedCanvas;
   if (out.width !== w || out.height !== h) { out.width = w; out.height = h; }
   const x = out.getContext("2d");
   x.clearRect(0, 0, w, h);
-  let ox = 0, oy = 0, box = null;
-  if (al.h !== "none" || al.v !== "none") {
-    box = box0();
-    if (box) {
-      if (al.h === "left") ox = al.padX - box.x;
-      else if (al.h === "center") ox = Math.round((w - box.w) / 2) - box.x;
-      else if (al.h === "right") ox = w - al.padX - box.w - box.x;
-      if (al.v === "top") oy = al.padY - box.y;
-      else if (al.v === "middle") oy = Math.round((h - box.h) / 2) - box.y;
-      else if (al.v === "bottom") oy = h - al.padY - box.h - box.y;
-    }
+  let ox = 0, oy = 0;
+  const box = g.anchor === "none" ? null : entry.box;
+  if (box) {
+    const a = g.anchor;
+    const tx = a === "left" ? g.bx : a === "right" ? g.bx + g.bw - box.w : g.bx + Math.floor((g.bw - box.w) / 2);
+    const ty = a === "top" ? g.by : a === "bottom" ? g.by + g.bh - box.h : g.by + Math.floor((g.bh - box.h) / 2);
+    ox = tx - box.x; oy = ty - box.y;
   }
   ox += f.dx || 0; oy += f.dy || 0;
   x.drawImage(cell, ox, oy);
   let overflow = false;
-  if (ox || oy) {
-    const b = box || box0();
+  if (ox || oy || w !== cell.width || h !== cell.height) {
+    const b = box || (entry.box === undefined ? (entry.box = contentBox(cell)) : entry.box);
     if (b) overflow = b.x + ox < 0 || b.y + oy < 0 || b.x + b.w + ox > w || b.y + b.h + oy > h;
   }
   return { canvas: out, overflow };
 }
 function syncAlignUi() {
-  const keyed = $("bgMode").value !== "none";
-  ["alignH", "alignV", "padX", "padY"].forEach((id) => { $(id).disabled = !keyed; });
-  $("alignHint").textContent = keyed
-    ? "背景を抜いたあとに残った絵の範囲を、セルの中で揃えます。横・縦の空きは端からの距離です（中央では使いません）。"
-    : "背景の透過をオンにすると使えます（絵の範囲が分からないため）。コマごとの微調整は使えます。";
+  const keyed = $("bgMode").value !== "none", anchor = $("anchor").value;
+  document.querySelectorAll("#anchorSeg button").forEach((b) => { b.disabled = !keyed; b.setAttribute("aria-pressed", b.dataset.anchor === anchor); });
+  $("cellMode").disabled = !keyed || anchor === "none";
+  $("cellPad").disabled = $("cellMode").disabled || $("cellMode").value !== "fit";
+  $("alignHint").textContent = !keyed
+    ? "背景の透過をオンにすると使えます（絵の範囲が分からないため）。コマごとの微調整は使えます。"
+    : anchor === "none"
+      ? "トリミング範囲の位置のまま並べます。"
+      : "コマどうしを選んだ端に揃え（もう一方の向きは中央）、揃えたまとまり全体をセルの真ん中に置きます。「中央」は上下左右とも中央です。「絵に合わせて詰める」では、セルを一番大きい絵＋余白の大きさにします。";
 }
+document.querySelectorAll("#anchorSeg button").forEach((b) => b.addEventListener("click", () => {
+  $("anchor").value = b.dataset.anchor;
+  $("anchor").dispatchEvent(new Event("change"));
+}));
+["anchor", "cellMode"].forEach((id) => $(id).addEventListener("change", syncAlignUi));
 function syncNudgeUi() {
   const f = frames[sel];
   $("nudgeTitle").textContent = f ? "コマごとの微調整（#" + (sel + 1) + "）" : "コマごとの微調整";
@@ -1059,7 +1074,7 @@ function renderStripSoon() { if (stripQueued) return; stripQueued = true; reques
 ["dx", "dy"].forEach((id) => $(id).addEventListener("change", () => nudge(Math.round(+$("dx").value || 0), Math.round(+$("dy").value || 0), true)));
 $("btnNudgeReset").addEventListener("click", () => nudge(0, 0, true));
 $("btnNudgeResetAll").addEventListener("click", () => { frames.forEach((f) => { f.dx = 0; f.dy = 0; }); syncNudgeUi(); renderStrip(); rebuild(); toast("全コマのずれを戻しました"); });
-["alignH", "alignV", "padX", "padY"].forEach((id) => $(id).addEventListener("input", scheduleRebuild));
+$("cellPad").addEventListener("input", scheduleRebuild);
 $("bgMode").addEventListener("change", syncAlignUi);
 
 function refreshAll() { renderStrip(); drawCrop(); rebuild(); syncNudgeUi(); }
@@ -1198,8 +1213,8 @@ $("btnSample").addEventListener("click", () => {
 
 // ---- 設定の記憶（コマ・トリミング範囲・ファイル名は保存しない） ----
 const PREFS_KEY = "screenshot-sprite-sheet:settings";
-const PREF_IDS = ["cols", "spacing", "margin", "scale", "smoothing", "duration", "jsonFormat", "autoMargin", "insertAfterSel", "bgMode", "keyAuto", "keyColor", "tol", "soft", "alignH", "alignV", "padX", "padY", "onion"];
-const PREF_DEFAULTS = { cols: 0, spacing: 0, margin: 0, scale: 100, smoothing: "nearest", duration: 100, jsonFormat: "hash", autoMargin: 4, insertAfterSel: false, bgMode: "none", keyAuto: true, keyColor: "#00ff00", tol: 24, soft: 8, alignH: "center", alignV: "bottom", padX: 0, padY: 0, onion: true };
+const PREF_IDS = ["cols", "spacing", "margin", "scale", "smoothing", "duration", "jsonFormat", "autoMargin", "insertAfterSel", "bgMode", "keyAuto", "keyColor", "tol", "soft", "anchor", "cellMode", "cellPad", "onion"];
+const PREF_DEFAULTS = { cols: 0, spacing: 0, margin: 0, scale: 100, smoothing: "nearest", duration: 100, jsonFormat: "hash", autoMargin: 4, insertAfterSel: false, bgMode: "none", keyAuto: true, keyColor: "#00ff00", tol: 24, soft: 8, anchor: "bottom", cellMode: "crop", cellPad: 0, onion: true };
 let restoringPrefs = false;
 function readPrefs() {
   const o = {};
@@ -1213,6 +1228,7 @@ function applyPrefs(p) {
     const el = $(id);
     if (el.type === "checkbox") el.checked = !!p[id];
     else if (el.type === "radio") { el.checked = !!p[id]; if (id === "keyAuto") $("keyManual").checked = !p[id]; }
+    else if (id === "anchor") { if (["bottom", "top", "left", "right", "center", "none"].includes(p[id])) el.value = p[id]; }
     else if (el.tagName === "SELECT") { if ([...el.options].some((o) => o.value === String(p[id]))) el.value = p[id]; }
     else el.value = p[id];
   });
