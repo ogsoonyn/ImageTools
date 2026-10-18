@@ -326,3 +326,105 @@ def test_preview_background_and_additive(browser: Browser, base_url: str):
     page.click("#btnSample")
     page.wait_for_timeout(200)
     assert errors == []
+
+
+def _open_with_storage(browser: Browser, base_url: str, script: str, query: str = "") -> tuple[Page, list[str]]:
+    context = browser.new_context()
+    context.add_init_script(script)
+    page = context.new_page()
+    errors: list[str] = []
+    page.on("pageerror", lambda err: errors.append(str(err)))
+    page.goto(f"{base_url}/{TOOL}{query}")
+    return page, errors
+
+
+def test_invalid_saved_values_are_ignored(browser: Browser, base_url: str):
+    # 範囲外・小数・型違い・存在しない選択肢は項目ごとに捨て、初期値のまま使う
+    script = f"""
+      localStorage.setItem('{PREFS_KEY}', JSON.stringify({{
+        tol: 999, cols: 2.5, spacing: 3, jsonFormat: 'zzz', keyColor: 'red', mult4: 'false', lum: 1, anchor: 'nope'
+      }}));
+    """
+    page, errors = _open_with_storage(browser, base_url, script)
+    expect(page.locator("#tol")).to_have_value("24")
+    expect(page.locator("#cols")).to_have_value("0")
+    expect(page.locator("#spacing")).to_have_value("3")
+    expect(page.locator("#jsonFormat")).to_have_value("hash")
+    expect(page.locator("#keyColor")).to_have_value("#00ff00")
+    expect(page.locator("#mult4")).not_to_be_checked()
+    expect(page.locator("#lum")).not_to_be_checked()
+    expect(page.locator("#anchor")).to_have_value("bottom")
+    assert errors == []
+    page.context.close()
+
+
+def test_blocked_storage_does_not_break_tool(browser: Browser, base_url: str):
+    # localStorage が使えない環境(プライベートモード等)や壊れた値でも、通常どおり動く
+    script = f"""
+      localStorage.setItem('{PREFS_KEY}', '{{broken');
+      Storage.prototype.setItem = () => {{ throw new DOMException('blocked', 'SecurityError'); }};
+    """
+    page, errors = _open_with_storage(browser, base_url, script)
+    page.click("#btnSample")
+    expect(page.locator("#countBadge")).to_have_text("6")
+    page.select_option("#bgMode", "flood")
+    page.click("#btnResetPrefs")
+    assert errors == []
+    page.context.close()
+
+
+def test_old_screenshot_settings_are_carried_over(browser: Browser, base_url: str):
+    script = """
+      localStorage.setItem('imagetools:screenshot-sprite-sheet:settings',
+        JSON.stringify({ cols: 5, bgMode: 'flood', alignH: 'left', alignV: 'none' }));
+    """
+    page, errors = _open_with_storage(browser, base_url, script)
+    expect(page.locator("#cols")).to_have_value("5")
+    expect(page.locator("#bgMode")).to_have_value("flood")
+    expect(page.locator("#anchor")).to_have_value("left")
+    assert errors == []
+    page.context.close()
+
+
+def test_clearing_frames_turns_sheet_mode_off(browser: Browser, base_url: str):
+    page, errors = _open(browser, base_url)
+    _drop_files(page, [("fx_4x2.png", "#00ff00", 64, 32)])
+    expect(page.locator("#sheetMode")).to_be_checked()
+    page.click("#btnClear")
+    page.click("#btnClear")
+    expect(page.locator("#countBadge")).to_have_text("0")
+    expect(page.locator("#sheetMode")).not_to_be_checked()
+    _drop_files(page, [("shot.png", "#00ff00", 64, 32)])
+    expect(page.locator("#countBadge")).to_have_text("1")
+    assert page.evaluate("isSheet()") is False
+    assert page.evaluate("pngName()") == "shot_1x1.png"
+    assert errors == []
+
+
+def test_keyout_mode_single_file_is_a_sheet(browser: Browser, base_url: str):
+    # 旧キー抜きツールと同じく、1枚なら名前に分割数が無くてもシートとして扱い、名前の途中の列x行も読む
+    page, errors = _open(browser, base_url, "?mode=keyout")
+    expect(page.locator("#spacing")).to_have_value("1")
+    _drop_files(page, [("fx_8x4_v2.png", "#ff00ff", 64, 32)])
+    expect(page.locator("#sheetMode")).to_be_checked()
+    expect(page.locator("#srcCols")).to_have_value("8")
+    expect(page.locator("#srcRows")).to_have_value("4")
+    page.click("#btnClear")
+    page.click("#btnClear")
+    _drop_files(page, [("explosion.png", "#ff00ff", 32, 32)])
+    expect(page.locator("#sheetMode")).to_be_checked()
+    expect(page.locator("#srcCols")).to_have_value("1")
+    assert errors == []
+
+
+def test_effect_sample_does_not_keep_its_key_settings(browser: Browser, base_url: str):
+    page, errors = _open(browser, base_url)
+    page.select_option("#sampleKind", "effect")
+    page.click("#btnSample")
+    expect(page.locator("#countBadge")).to_have_text("9")
+    expect(page.locator("#bgMode")).to_have_value("all")
+    # 自分の画像を入れると、サンプル前の設定に戻る
+    _paste_color(page, "#ff0000")
+    expect(page.locator("#countBadge")).to_have_text("1")
+    expect(page.locator("#bgMode")).to_have_value("none")
+    assert errors == []

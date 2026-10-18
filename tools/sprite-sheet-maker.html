@@ -615,9 +615,10 @@ function sameImage(a, b) {
   for (let i = 0; i < da.length; i += 4) if (da[i] !== db[i] || da[i + 1] !== db[i + 1] || da[i + 2] !== db[i + 2] || da[i + 3] !== db[i + 3]) return false;
   return true;
 }
-// ファイル名の末尾の「列x行」（各 1〜64）。シートとして読むときの分割数に使う
+// ファイル名の中の最後の「列x行」（各 1〜64。fx_8x4_v2 も可）。シートとして読むときの分割数に使う
+const FROM_KEYOUT = new URLSearchParams(location.search).get("mode") === "keyout";
 function gridFromName(name) {
-  const m = name.replace(/\.[^.]+$/, "").match(/(\d+)\s*[xX×]\s*(\d+)$/);
+  const m = name.replace(/\.[^.]+$/, "").match(/(\d+)\s*[xX×]\s*(\d+)(?!.*\d+\s*[xX×]\s*\d+)/);
   if (!m) return null;
   const c = +m[1], r = +m[2];
   return c >= 1 && c <= 64 && r >= 1 && r <= 64 ? { cols: c, rows: r } : null;
@@ -633,22 +634,23 @@ async function addImages(list, { fromPaste = false } = {}) {
       const src = await fileToCanvas(f);
       const generic = !f.name || /^image\.(png|jpe?g|webp|gif|bmp)$/i.test(f.name);
       const name = fromPaste || generic ? "paste_" + String(pasteSeq++).padStart(3, "0") : f.name.replace(/\.[^.]+$/, "");
-      added.push({ id: nextId++, name, src, w: src.width, h: src.height, dx: 0, dy: 0 });
+      added.push({ id: nextId++, name, src, w: src.width, h: src.height, dx: 0, dy: 0, fileName: f.name || "" });
     } catch (e) {
       toast((f.name || "画像") + " を読み込めませんでした");
     }
   }
   if (!added.length) return;
   // 自分の画像を入れたらサンプルは片付けてボタンも隠す（混ざって出力されるのを防ぐ）
-  if (usedSample) { frames = []; sel = -1; crop = null; usedSample = false; }
+  if (usedSample) { frames = []; sel = -1; crop = null; usedSample = false; restorePrefsAfterSample(); }
   $("sampleRow").hidden = true;
   if (fresh && !fromPaste) {
-    // 最初に入れた画像の名前から出力ファイル名を決める。「_列x行」付きの1枚はできあがったシートとみなす
-    const grid = added.length === 1 ? gridFromName(list[0].name || "") : null;
-    if (grid) {
-      $("srcCols").value = grid.cols; $("srcRows").value = grid.rows; $("srcCount").value = 0;
+    // 最初に入れた画像の名前から出力ファイル名を決める。「列x行」付きの1枚はできあがったシートとみなす。
+    // 旧キー抜きツールの URL から来たときは、旧ツールと同じく1枚ならいつもシートとして扱う
+    const grid = added.length === 1 ? gridFromName(added[0].fileName) : null;
+    if (grid || (added.length === 1 && FROM_KEYOUT)) {
+      $("srcCols").value = grid ? grid.cols : 1; $("srcRows").value = grid ? grid.rows : 1; $("srcCount").value = 0;
       setSheetMode(true);
-      toast("ファイル名から " + grid.cols + "x" + grid.rows + " のシートとして読み込みました（透過だけ行います）", 3500);
+      toast(grid ? "ファイル名から " + grid.cols + "x" + grid.rows + " のシートとして読み込みました（透過だけ行います）" : "1枚のシートとして読み込みました。分割数を指定してください", 3500);
     } else if (added.length > 1) setSheetMode(false);
     const pref = added.length === 1 ? added[0].name : commonPrefix(added.map((f) => f.name)).replace(/[_\-\s.]*\d*$/, "");
     if (pref) $("baseName").value = pref;
@@ -791,7 +793,7 @@ function removeAt(i) {
   frames.splice(i, 1);
   // 選択中より前のコマを消したら、同じコマを選んだままにする
   if (i < sel || sel >= frames.length) sel = Math.max(frames.length ? 0 : -1, sel - 1);
-  if (!frames.length) crop = null;
+  if (!frames.length) { crop = null; resetSheetMode(); }
   else clampCrop(); // 一番大きいコマを消すと、範囲が残りのコマの外に出ることがある
   syncCropInputs();
   refreshAll();
@@ -805,7 +807,7 @@ $("btnClear").addEventListener("click", () => {
     return;
   }
   clearTimeout(clearArmed); clearArmed = 0; b.textContent = "すべて削除"; b.classList.remove("danger");
-  frames = []; sel = -1; crop = null; syncCropInputs(); refreshAll();
+  frames = []; sel = -1; crop = null; resetSheetMode(); syncCropInputs(); refreshAll();
   toast("すべてのコマを削除しました");
 });
 $("btnReverse").addEventListener("click", () => { frames.reverse(); if (sel >= 0) sel = frames.length - 1 - sel; refreshAll(); });
@@ -883,9 +885,11 @@ $("btnAutoCrop").addEventListener("click", () => {
 const cc = $("cropCanvas");
 const cctx = cc.getContext("2d");
 function cssScale() { const r = cc.getBoundingClientRect(); return r.width ? cc.width / r.width : 1; }
+// トリミング範囲のプレビューに出すコマ（シートとして扱うときは書き出す 1 コマ目）
+function viewIndex() { return isSheet() ? 0 : sel; }
 function drawCrop() {
-  const f = frames[sel];
-  $("cropTitle").textContent = f ? "（#" + (sel + 1) + " を表示中）" : "";
+  const f = frames[viewIndex()];
+  $("cropTitle").textContent = f ? "（#" + (viewIndex() + 1) + " を表示中）" : "";
   if (!f) {
     cc.width = 480; cc.height = 270;
     cctx.clearRect(0, 0, cc.width, cc.height);
@@ -954,7 +958,7 @@ cc.addEventListener("pointerdown", (e) => {
   if (!frames.length || e.button !== 0) return;
   const p = ptr(e);
   if (pickMode) {
-    const f = frames[sel], px = Math.floor(p.x), py = Math.floor(p.y);
+    const f = frames[viewIndex()], px = Math.floor(p.x), py = Math.floor(p.y);
     if (f && px >= 0 && py >= 0 && px < f.w && py < f.h) {
       const v = f.src.getContext("2d", { willReadFrequently: true }).getImageData(px, py, 1, 1).data;
       $("keyColor").value = "#" + [v[0], v[1], v[2]].map((n) => n.toString(16).padStart(2, "0")).join("");
@@ -994,6 +998,7 @@ function opts() {
 // ---- 1枚のシートとして扱う（並べ替えずに透過だけ） ----
 function isSheet() { return $("sheetMode").checked && frames.length > 0; }
 function setSheetMode(on) { $("sheetMode").checked = on; syncSheetUi(); }
+function resetSheetMode() { $("srcCols").value = 1; $("srcRows").value = 1; $("srcCount").value = 0; setSheetMode(false); }
 function syncSheetUi() {
   const on = $("sheetMode").checked;
   $("sheetOpts").hidden = !on;
@@ -1003,6 +1008,7 @@ $("sheetMode").addEventListener("change", () => { syncSheetUi(); refreshAll(); }
 ["srcCols", "srcRows", "srcCount"].forEach((id) => $(id).addEventListener("input", scheduleRebuild));
 function rebuildSheet(ko) {
   const f = frames[0];
+  if (frames.some((g) => g.overflow)) { frames.forEach((g) => { g.overflow = false; }); renderStrip(); }
   const e = keyedCell(f, { x: 0, y: 0, w: f.w, h: f.h }, ko);
   const int = (id, lo, hi) => Math.max(lo, Math.min(hi, Math.floor(+$(id).value || 0)));
   const cols = int("srcCols", 1, 128), rows = int("srcRows", 1, 128);
@@ -1404,6 +1410,12 @@ function drawSampleFrame(i, n) {
 // エフェクトのサンプル（マゼンタ背景の連番）は samples/ から fetch する（file:// では読めない）
 const EFFECT_SAMPLE_DIR = "../samples/keyout/";
 const EFFECT_SAMPLE_FILES = ["colon183", "colon184", "colon185", "colon186", "colon187", "colon188", "colon189", "colon190", "colon191"];
+let prefsBeforeSample = null; // エフェクトのサンプルで透過の設定を変える前の設定
+function restorePrefsAfterSample() {
+  if (!prefsBeforeSample) return;
+  const p = prefsBeforeSample; prefsBeforeSample = null;
+  applyPrefs(p); savePrefs();
+}
 async function loadEffectSample() {
   const list = await Promise.all(EFFECT_SAMPLE_FILES.map(async (name) => {
     const r = await fetch(EFFECT_SAMPLE_DIR + name + ".png");
@@ -1412,12 +1424,14 @@ async function loadEffectSample() {
     return { id: nextId++, name, src, w: src.width, h: src.height, dx: 0, dy: 0 };
   }));
   frames = list;
+  if (!prefsBeforeSample) prefsBeforeSample = readPrefs();
   // マゼンタをキーカラーとして抜く
   $("bgMode").value = "all"; $("keyManual").checked = true; $("keyColor").value = "#ff00ff";
   $("tol").value = 32; $("soft").value = 16; $("unblend").checked = true;
   syncBgUi(); syncAlignUi();
 }
 function loadScreenSample() {
+  restorePrefsAfterSample();
   const n = 6;
   frames = [];
   for (let i = 0; i < n; i++) {
@@ -1444,12 +1458,14 @@ $("btnSample").addEventListener("click", async () => {
 });
 
 // ---- 設定の記憶（コマ・トリミング範囲・ファイル名・シートとして扱うかは保存しない） ----
-// 旧ツール（キー抜き・スクショ）の設定は引き継がない
 const PREFS_KEY = "sprite-sheet-maker:settings";
 const PREF_IDS = ["cols", "spacing", "margin", "scale", "smoothing", "mult4", "pot", "duration", "jsonFormat", "autoMargin", "insertAfterSel", "bgMode", "keyAuto", "keyColor", "tol", "soft", "unblend", "lum", "blackPt", "whitePt", "lumColor", "anchor", "cellMode", "cellPad", "onion", "additive", "previewBg"];
 const PREF_DEFAULTS = { cols: 0, spacing: 0, margin: 0, scale: 100, smoothing: "nearest", mult4: false, pot: false, duration: 100, jsonFormat: "hash", autoMargin: 4, insertAfterSel: false, bgMode: "none", keyAuto: true, keyColor: "#00ff00", tol: 24, soft: 8, unblend: false, lum: false, blackPt: 0, whitePt: 255, lumColor: "unpremul", anchor: "bottom", cellMode: "crop", cellPad: 0, onion: true, additive: false, previewBg: "checker" };
 // 旧「Keyout Sprite Packer」の URL から来たとき（?mode=keyout）の初めの透過の設定。保存した設定があればそちらを使う
-const KEYOUT_PRESET = { bgMode: "all", keyAuto: false, keyColor: "#ff00ff", tol: 32, soft: 16, unblend: true };
+// 旧ツールは隣のコマへのにじみ防止にセルの内側へ 1px の余白を付けていたので、コマの間隔を 1px にする
+const KEYOUT_PRESET = { bgMode: "all", keyAuto: false, keyColor: "#ff00ff", tol: 32, soft: 16, unblend: true, spacing: 1 };
+// 旧「スクショ スプライトシート」の設定は項目が同じなので引き継ぐ（新しい設定がまだ無いときだけ）
+const OLD_SCREENSHOT_PREFS_KEY = "screenshot-sprite-sheet:settings";
 let restoringPrefs = false;
 function readPrefs() {
   const o = {};
@@ -1458,15 +1474,20 @@ function readPrefs() {
 }
 function applyPrefs(p) {
   restoringPrefs = true;
+  // 壊れた値・範囲外の値は項目ごとに捨てて、いまの値のまま使う
   PREF_IDS.forEach((id) => {
     if (!(id in p)) return;
-    const el = $(id);
-    if (el.type === "checkbox") el.checked = !!p[id];
-    else if (el.type === "radio") { el.checked = !!p[id]; if (id === "keyAuto") $("keyManual").checked = !p[id]; }
-    else if (id === "anchor") { if (["bottom", "top", "left", "right", "center", "none"].includes(p[id])) el.value = p[id]; }
-    else if (id === "previewBg") { if (Object.keys(BG_COLORS).includes(p[id])) el.value = p[id]; }
-    else if (el.tagName === "SELECT") { if ([...el.options].some((o) => o.value === String(p[id]))) el.value = p[id]; }
-    else el.value = p[id];
+    const el = $(id), v = p[id];
+    if (el.type === "checkbox") { if (typeof v === "boolean") el.checked = v; }
+    else if (el.type === "radio") { if (typeof v === "boolean") { el.checked = v; if (id === "keyAuto") $("keyManual").checked = !v; } }
+    else if (id === "anchor") { if (["bottom", "top", "left", "right", "center", "none"].includes(v)) el.value = v; }
+    else if (id === "previewBg") { if (Object.keys(BG_COLORS).includes(v)) el.value = v; }
+    else if (el.tagName === "SELECT") { if ([...el.options].some((o) => o.value === String(v))) el.value = v; }
+    else if (el.type === "color") { if (typeof v === "string" && /^#[0-9a-f]{6}$/i.test(v)) el.value = v.toLowerCase(); }
+    else {
+      const n = Number(v);
+      if (typeof v !== "boolean" && String(v).trim() !== "" && Number.isInteger(n) && n >= +el.min && (el.max === "" || n <= +el.max)) el.value = String(n);
+    }
   });
   restoringPrefs = false;
   syncBgUi(); syncAlignUi(); syncPreviewBg();
@@ -1478,11 +1499,20 @@ PREF_IDS.forEach((id) => $(id).addEventListener("change", () => { savePrefs(); r
 syncBgUi(); syncAlignUi(); syncSheetUi();
 $("btnResetPrefs").addEventListener("click", () => { applyPrefs(PREF_DEFAULTS); IT.store.remove(PREFS_KEY); toast("設定をリセットしました"); });
 {
-  const fromKeyout = new URLSearchParams(location.search).get("mode") === "keyout";
-  if (fromKeyout) $("sampleKind").value = "effect";
+  const fromKeyout = FROM_KEYOUT;
+  if (fromKeyout && location.protocol !== "file:") $("sampleKind").value = "effect";
   const saved = IT.store.get(PREFS_KEY);
+  const old = IT.store.get(OLD_SCREENSHOT_PREFS_KEY);
   if (saved && typeof saved === "object") applyPrefs(saved);
   else if (fromKeyout) applyPrefs(KEYOUT_PRESET);
+  else if (old && typeof old === "object") {
+    // 旧形式（横・縦を別々に指定）の揃え方は、近い揃え方に読み替える
+    if (!("anchor" in old) && ("alignH" in old || "alignV" in old)) {
+      const h = old.alignH, v = old.alignV;
+      old.anchor = h === "none" && v === "none" ? "none" : v === "bottom" || v === "top" ? v : h === "left" || h === "right" ? h : "center";
+    }
+    applyPrefs(old);
+  }
 }
 
 refreshAll();
