@@ -45,17 +45,80 @@ const cutCache = new Map<number, { key: string; canvas: HTMLCanvasElement }>(); 
 let detectCount = 0, buildCount = 0; // テスト用の処理回数
 
 // ---- 画像の読み込み ----
-async function loadFile(file: File) {
+// 読めたら true（JSON を当てる前に、この読み込みが成功したかを見るため）
+async function loadFile(file: File): Promise<boolean> {
   try {
     const bmp = await createImageBitmap(file);
     setSource(bmp, file.name);
     bmp.close && bmp.close();
-  } catch { toast(file.name + " を読み込めませんでした"); }
+    return true;
+  } catch { toast(file.name + " を読み込めませんでした"); return false; }
+}
+const isImage = (f: File) => f.type.startsWith("image/") || /\.(bmp|png|jpe?g|webp|gif)$/i.test(f.name);
+const isJson = (f: File) => /\.json$/i.test(f.name) || f.type === "application/json";
+// 画像と一緒に Aseprite 互換 JSON があれば、絵から見つける代わりに JSON のコマ区切りとアクション（frameTags）で読む
+async function loadFiles(files: File[]) {
+  const img = files.find(isImage), js = files.find(isJson);
+  if (!img) { toast(js ? "JSON はシート画像と一緒にドロップしてください" : "画像ファイルが見つかりませんでした"); return; }
+  let data: unknown = null;
+  if (js) { try { data = JSON.parse(await js.text()); } catch { toast("JSON を読めなかったので、絵から自動で見つけます"); } }
+  if (!(await loadFile(img)) || !data) return;
+  const r = fromAseprite(data);
+  if (r === "size") toast("JSON の画像サイズがシートと合わないので、絵から自動で見つけました", 4000);
+  else if (r === "none") toast("JSON にコマが無かったので、絵から自動で見つけました");
+  else $("srcNote").textContent = img.name + "（" + S.W + "×" + S.H + "）と " + js!.name + " から " + S.frames.size + " コマ・" + S.groups.length + " アニメ" +
+    (r.empty ? "（絵の無いコマ " + r.empty + " 個は除外）" : "") + "（検出の設定を変えると絵から見つけ直します）";
+}
+type AseRect = { x: number; y: number; w: number; h: number };
+type AseJson = { frames?: { frame?: AseRect }[] | Record<string, { frame?: AseRect }>; meta?: { size?: { w?: number; h?: number }; frameTags?: unknown } };
+// JSON の各コマの矩形を、その中のコマ画素の範囲まで詰めて 1 コマにする。frameTags ごとに 1 アニメ、どのタグにも入らないコマは最後にまとめる
+// タグが入れ子・重なりのとき（Aseprite 変換の「セル」と「セル/タグ」など）は、コマを一番狭いタグに入れる（同じ幅なら後のタグ）
+// 戻り値: "size" = JSON の画像サイズがシートと違う / "none" = 使えるコマが無い（どちらも自動検出のまま） / それ以外 = 読んだ（empty = 絵の無いコマの数）
+function fromAseprite(raw: unknown): "size" | "none" | { empty: number } {
+  const data = (raw && typeof raw === "object" ? raw : {}) as AseJson;
+  const size = data.meta && data.meta.size;
+  if (size && Number.isFinite(size.w) && Number.isFinite(size.h) && (size.w !== S.W || size.h !== S.H)) return "size";
+  const list = (Array.isArray(data.frames) ? data.frames : Object.values(data.frames && typeof data.frames === "object" ? data.frames : {})) as { frame?: AseRect }[];
+  const ids = list.map((e) => {
+    const r = e && e.frame;
+    if (!r || ![r.x, r.y, r.w, r.h].every(Number.isFinite)) return null;
+    const x = Math.max(0, r.x | 0), y = Math.max(0, r.y | 0), x2 = Math.min(S.W, (r.x | 0) + (r.w | 0)), y2 = Math.min(S.H, (r.y | 0) + (r.h | 0));
+    let x0 = Infinity, y0 = Infinity, x1 = -1, y1 = -1;
+    for (let yy = y; yy < y2; yy++) for (let xx = x; xx < x2; xx++) {
+      if (S.fg![yy * S.W + xx]) { if (xx < x0) x0 = xx; if (xx > x1) x1 = xx; if (yy < y0) y0 = yy; if (yy > y1) y1 = yy; }
+    }
+    return x1 < 0 ? null : { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
+  });
+  if (!ids.some(Boolean)) return "none";
+  // 壊れた frameTags（配列でない・要素が null など）は読み飛ばす。状態を書き換える前に済ませる
+  const rawTags: unknown[] = Array.isArray(data.meta && data.meta.frameTags) ? (data.meta!.frameTags as unknown[]) : [];
+  const tags = rawTags.filter((t): t is { name?: unknown; from?: unknown; to?: unknown } => !!t && typeof t === "object")
+    .map((t) => ({ name: String(t.name ?? ""), from: Math.max(0, Number(t.from) | 0), to: Math.min(ids.length - 1, Number(t.to) | 0) }));
+  clearTimeout(detTimer); // 待っている自動検出に上書きされないように
+  pushUndo(); // 元に戻すと、絵から見つけた結果に戻る
+  S.frames = new Map(); S.nextId = 1; S.nextG = 1; S.sel.clear(); S.dropped = 0;
+  const fid = ids.map((r) => { if (!r) return null; const id = S.nextId++; S.frames.set(id, { id, ...r, labels: null }); return id; });
+  const tagOf = fid.map((_, i) => {
+    let best = -1;
+    tags.forEach((t, k) => { if (t.from <= i && i <= t.to && (best < 0 || t.to - t.from <= tags[best].to - tags[best].from)) best = k; });
+    return best;
+  });
+  const groups: Group[] = [];
+  tags.forEach((t, k) => {
+    const g = fid.filter((id, i): id is number => id != null && tagOf[i] === k);
+    if (g.length) groups.push(newGroup(g, t.name || undefined));
+  });
+  const rest = fid.filter((id, i): id is number => id != null && tagOf[i] < 0);
+  if (rest.length) groups.push(newGroup(rest));
+  S.groups = groups; S.activeG = groups[0] ? groups[0].id : null;
+  refresh();
+  return { empty: ids.filter((r) => !r).length };
 }
 function setSource(img: HTMLCanvasElement | ImageBitmap, name: string) {
   const W = img.width, H = img.height;
   const c = mk(W, H), ctx = c.getContext("2d", { willReadFrequently: true })!;
   ctx.drawImage(img, 0, 0);
+  clearTimeout(detTimer); // 読み込む前に動かした設定の検出は、この画像の検出に含まれる
   S.src = c; S.W = W; S.H = H; S.name = name;
   S.data = ctx.getImageData(0, 0, W, H).data;
   const v = $<HTMLCanvasElement>("srcView"); v.width = W; v.height = H; v.getContext("2d")!.drawImage(c, 0, 0);
@@ -775,7 +838,9 @@ document.addEventListener("keydown", (e) => {
   else if (k === "r") setSeg("toolSeg", "tool", "add");
   else if (k === "i") setSeg("toolSeg", "tool", "pick");
 });
-IT.initDrop({ zone: "drop", input: "fileInput", accept: (f) => f.type.startsWith("image/") || /\.(bmp|png|jpe?g|webp|gif)$/i.test(f.name), onFiles: (files) => loadFile(files[0]), emptyMessage: "画像ファイルが見つかりませんでした" });
+IT.initDrop({ zone: "drop", input: "fileInput", accept: (f) => isImage(f) || isJson(f), onFiles: loadFiles, emptyMessage: "画像ファイルが見つかりませんでした" });
+// 他のツールの「コマ整列ツールで開く」から開かれたときは、渡されたシート（と JSON）を読む
+IT.receive(loadFiles);
 
 // ---- 設定の記憶 ----
 // IT.store の frame-sorter:settings に 1 オブジェクトで保存する（背景色・出力名は画像ごとに決まるので保存しない）

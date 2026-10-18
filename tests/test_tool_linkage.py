@@ -220,3 +220,42 @@ def test_inbetween_splits_sheet_by_file_name(browser: Browser, base_url: str):
         assert problems == [], "\n".join(problems)
     finally:
         context.close()
+
+
+def test_aseprite_to_frame_sorter(browser: Browser, base_url: str):
+    """Aseprite 変換 → コマ整列: JSON のコマ区切りとタグのとおりに、コマとアニメが入る。"""
+    context, page, problems = _open_tool(browser, base_url, "tools/aseprite-sheet-converter.html", "true")
+    try:
+        _load_sample(page)
+        page.select_option("#json-format", "array")
+        png_name, _ = _saved(page, "PNGを保存")
+        _, data = _saved(page, "JSONを保存")
+        saved = json.loads(data)
+        fs = _popup(page, "コマ整列ツールで開く", problems)
+        fs.wait_for_function("S.name !== '' && S.groups.length > 0 && document.getElementById('srcNote').textContent.includes('.json')", timeout=15_000)
+        assert fs.evaluate("S.name") == png_name
+        # タグごとに 1 アニメ。入れ子のタグ(「セル」と「セル/タグ」)では、コマは一番狭いタグに入る
+        tags = saved["meta"]["frameTags"]
+        owner = []
+        for i in range(len(saved["frames"])):
+            best = None
+            for k, t in enumerate(tags):
+                if t["from"] <= i <= t["to"] and (best is None or t["to"] - t["from"] <= tags[best]["to"] - tags[best]["from"]):
+                    best = k
+            owner.append(best)
+        # アニメはタグの一覧の順に並ぶ(このサンプルは絵の無いコマが無い)
+        leaf = [t["name"] for k, t in enumerate(tags) if k in owner]
+        assert fs.evaluate("S.dropped") == 0
+        assert fs.evaluate("S.groups.map((g) => g.name)") == leaf
+        assert "cell0/idle" in leaf and "cell0" not in leaf
+        # 各コマは JSON の矩形の中に収まっている
+        rects = [f["frame"] for f in saved["frames"]]
+        inside = fs.evaluate("[...S.frames.values()].map((f) => [f.x, f.y, f.w, f.h])")
+        assert 0 < len(inside) <= len(rects)
+        for x, y, w, h in inside:
+            assert any(r["x"] <= x and r["y"] <= y and x + w <= r["x"] + r["w"] and y + h <= r["y"] + r["h"] for r in rects)
+        # 元に戻すと、絵から見つけた結果に戻る
+        assert fs.evaluate("S.undo.length") == 1
+        assert problems == [], "\n".join(problems)
+    finally:
+        context.close()
