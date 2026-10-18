@@ -45,9 +45,9 @@
         <h2 class="sec-title">入力</h2>
         <label class="drop" id="drop" for="fileInput">
           <span class="lbl">PNG / BMP / JPG / WebP をドロップ、またはクリックして選択</span><br>
-          <span class="hint">コマがバラバラに置かれた1枚の画像</span>
+          <span class="hint">コマがバラバラに置かれた1枚の画像。Aseprite 互換 JSON も一緒に入れると、コマの区切りとタグ（アニメ）を JSON のとおりに読みます</span>
         </label>
-        <input type="file" id="fileInput" class="sr-only" accept="image/png,image/bmp,image/jpeg,image/webp,image/*">
+        <input type="file" id="fileInput" class="sr-only" accept="image/png,image/bmp,image/jpeg,image/webp,image/*,.json,application/json" multiple>
         <div class="flex flex-wrap items-center gap-2"><button class="btn" type="button" id="btnSample">サンプルを読み込む</button></div>
         <p class="hint" id="srcNote">未読み込み</p>
       </section>

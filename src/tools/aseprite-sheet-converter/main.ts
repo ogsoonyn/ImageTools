@@ -523,11 +523,14 @@ $("save-png").addEventListener("click", async () => {
 $("save-json").addEventListener("click", () => {
   if (state.doc) IT.saveFile(outBase() + ".json", new Blob([jsonText()], { type: "application/json" }));
 });
-$("open-polish").addEventListener("click", () => {
+// 保存せずに、シート PNG と JSON を別のツールの新しいタブへ渡す
+const openWith = (tool: string) => {
   if (!state.doc) return;
   const n = outBase();
-  IT.openIn("sprite-polish", IT.canvasToBlob(state.sheet).then((b) => [new File([b], n + ".png", { type: "image/png" }), new File([jsonText()], n + ".json", { type: "application/json" })]));
-});
+  IT.openIn(tool, IT.canvasToBlob(state.sheet).then((b) => [new File([b], n + ".png", { type: "image/png" }), new File([jsonText()], n + ".json", { type: "application/json" })]));
+};
+$("open-polish").addEventListener("click", () => openWith("sprite-polish"));
+$("open-sorter").addEventListener("click", () => openWith("frame-sorter"));
 $("copy-json").addEventListener("click", async () => {
   if (!state.doc) return;
   const t = jsonText();
