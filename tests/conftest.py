@@ -1,6 +1,6 @@
 """Playwright スモークテスト用の共通フィクスチャ。
 
-リポジトリのルートを静的サーバーで配信し、各ページを Chromium で開く。
+リポジトリのルート(SITE_DIR 指定時はビルド結果)を静的サーバーで配信し、各ページを Chromium で開く。
 """
 
 from __future__ import annotations
@@ -15,6 +15,8 @@ import pytest
 from playwright.sync_api import Browser, sync_playwright
 
 ROOT = Path(__file__).resolve().parent.parent
+# 配信するディレクトリ。SITE_DIR=dist を指定するとビルド結果(npm run build の出力)を開く
+SITE = (ROOT / os.environ["SITE_DIR"]).resolve() if os.environ.get("SITE_DIR") else ROOT
 
 
 def discover_pages() -> list[str]:
@@ -55,7 +57,7 @@ def base_url() -> str:
     if url := os.environ.get("BASE_URL"):
         yield url.rstrip("/")
         return
-    handler = functools.partial(_QuietHandler, directory=str(ROOT))
+    handler = functools.partial(_QuietHandler, directory=str(SITE))
     server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()

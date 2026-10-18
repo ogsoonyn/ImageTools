@@ -14,7 +14,7 @@
 
 Google Fonts へのリクエストはテスト内で空の応答に差し替えています(外部CDNの一時的な不調でテストが落ちないように)。サンプルは `fetch` で読み込むため、`file://` ではなく HTTP 経由で開く必要があります。
 
-テストはリポジトリのルートを一時的な静的サーバー(`http://127.0.0.1:<空きポート>`)で配信してから開くので、サーバーを手で立てる必要はありません。PR ごとに GitHub Actions(`.github/workflows/smoke.yml`)でも同じテストが走ります。
+テストはリポジトリのルート(`SITE_DIR` を指定したときはそのディレクトリ)を一時的な静的サーバー(`http://127.0.0.1:<空きポート>`)で配信してから開くので、サーバーを手で立てる必要はありません。PR ごとに GitHub Actions(`.github/workflows/smoke.yml`)でも同じテストが走ります。
 
 ## 準備
 
@@ -43,6 +43,23 @@ Ubuntu / Windows 共通です。
 ```bash
 uv run pytest            # すべて
 uv run pytest -v -k sprite_sheet   # 名前で絞り込み
+```
+
+### ビルド結果に対して実行する
+
+GitHub Actions では、公開するのと同じビルド結果(`dist/`)を `SITE_DIR` で指定して開いています。手元で同じ確認をするときは次のようにします。
+
+```bash
+# Ubuntu
+npm run build
+SITE_DIR=dist uv run pytest
+```
+
+```powershell
+# Windows (PowerShell)
+npm run build
+$env:SITE_DIR = "dist"; uv run pytest
+Remove-Item Env:SITE_DIR
 ```
 
 ### 手元で立てたサーバーに対して実行する
