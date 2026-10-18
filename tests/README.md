@@ -4,6 +4,7 @@
 
 - コンソールに error / warning が出ないこと、ページ例外が起きないこと
 - 各ツールで「サンプルを読み込む」を押して `samples/` のサンプルを読み込み、「PNGを保存」「JSONを保存」で中身のある PNG / JSON がダウンロードされること
+  - Chromium には保存ダイアログ等(File System Access API)があるが、`conftest.py` の `browser.new_context()` はそれを隠して従来のダウンロード保存で確かめる。保存先の機能は `test_save_location.py` が `browser.raw_new_context()` でダイアログを差し替えて確かめる
 - アイコン一括生成の ZIP に各プリセットのファイル(ICO・PNG・site.webmanifest・Contents.json)が入ること、設定が保存・復元され「設定をリセット」で初期値に戻ること(`test_icon_generator.py`)
 - スプライトシート作成で、貼り付けた画像がコマとして順に追加されること、まとめて入れた画像がファイル名の自然順に並ぶこと、変化のある範囲の検出・背景の透過(キーカラー・輝度をアルファに)・位置揃え・コマごとの微調整・4の倍数/2の累乗が効くこと、名前の `_列x行` から1枚のシートとして透過だけ行えること、旧キー抜きツールの URL から来たときにマゼンタのキーカラーで始まること、設定が保存・復元され「設定をリセット」で初期値に戻ること(`test_sprite_sheet_maker.py`)
 - 統合した旧ツールの URL(`tools/keyout-sprite-packer.html` など)が、クエリとハッシュを引き継いで新しいツールへ移ること(`test_redirects.py`。移すだけのページは他のテストの対象から外す)

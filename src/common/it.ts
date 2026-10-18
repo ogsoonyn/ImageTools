@@ -1,5 +1,7 @@
 /* 全ツール共通の JS。各ツールの main.ts から `import { IT } from "@common/it"` で使う */
 
+import { canPickOpen, initSaveDirButton, pickOpen, saveLocal, setLoadedHandle } from "./save";
+
 const PREFIX = "imagetools:";
 
 // ---- localStorage の安全な読み書き（プライベートモード等で例外になっても落ちない） ----
@@ -59,8 +61,9 @@ function initThemeToggle(): void {
   });
 }
 
-// ---- ファイル保存（Claude アーティファクトでは downloads、通常ブラウザでは <a download>） ----
-// "anchor" = 通常ブラウザ / null = アーティファクト内だが downloads が使えない / それ以外 = downloads ハンドル
+// ---- ファイル保存 ----
+// 通常ブラウザ: 保存先フォルダ／保存ダイアログ（Chrome・Edge。save.ts）→ 使えなければ <a download>
+// Claude アーティファクト: downloads（"anchor" = 通常ブラウザ / null = downloads が使えない / それ以外 = downloads ハンドル）
 type Downloads = { save(arg: { filename: string; data: Blob | string }): Promise<{ status?: string } | undefined> };
 declare global {
   interface Window { claude?: { use?: (name: string) => unknown } }
@@ -82,12 +85,15 @@ async function saveFile(filename: string, data: Blob | string): Promise<boolean>
   const dl = await getDownloads();
   if (dl === "anchor") {
     const blob = data instanceof Blob ? data : new Blob([data]);
+    const r = await saveLocal(filename, blob);
+    if (r.status === "saved") { toast(r.where + " を保存しました"); return true; }
+    if (r.status === "cancelled") { toast(r.message); return false; }
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url; a.download = filename;
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 4000);
-    toast(filename + " を保存しました");
+    toast(r.message || filename + " を保存しました", r.message ? 4000 : undefined);
     return true;
   }
   if (!dl) { toast("この表示ではファイルを保存できません"); return false; }
@@ -108,6 +114,8 @@ function canvasToBlob(canvas: HTMLCanvasElement, type = "image/png"): Promise<Bl
 
 // ---- ドラッグ&ドロップ受付（ページ全体で受け、zone に .over を付ける） ----
 // accept: ファイルを絞る関数（省略時はすべて）。onFiles には絞り込み後の File[] を渡す
+// Chrome・Edge では選択欄の代わりにファイル選択ダイアログを開き、ドロップと合わせて読み込んだファイルのハンドルを覚える
+// （保存ダイアログを同じフォルダで開くため。save.ts）
 type DropOptions = {
   zone: string | HTMLElement | null;
   input?: string | HTMLInputElement | null;
@@ -118,7 +126,7 @@ type DropOptions = {
 function initDrop({ zone, input, accept = () => true, onFiles, emptyMessage = "対応するファイルが見つかりませんでした" }: DropOptions): void {
   const zoneEl = typeof zone === "string" ? document.getElementById(zone) : zone;
   const inputEl = typeof input === "string" ? (document.getElementById(input) as HTMLInputElement | null) : input;
-  const handle = (list: FileList | null | undefined) => {
+  const handle = (list: FileList | File[] | null | undefined) => {
     const files = [...(list || [])].filter(accept);
     if (!files.length) { toast(emptyMessage); return; }
     onFiles(files);
@@ -138,9 +146,28 @@ function initDrop({ zone, input, accept = () => true, onFiles, emptyMessage = "�
   document.addEventListener("drop", (e) => {
     if (!hasFiles(e)) return;
     e.preventDefault(); depth = 0; zoneEl?.classList.remove("over");
-    handle(e.dataTransfer?.files);
+    // ハンドルはドロップのイベント中にしか取れない
+    const handles = [...(e.dataTransfer?.items || [])].filter((i) => i.kind === "file").map((i) => {
+      const get = (i as DataTransferItem & { getAsFileSystemHandle?(): Promise<FileSystemHandle | null> }).getAsFileSystemHandle;
+      try { return get ? get.call(i).catch(() => null) : null; } catch { return null; }
+    });
+    const files = [...(e.dataTransfer?.files || [])];
+    const first = files.find(accept);
+    if (first) Promise.all(handles).then((hs) => setLoadedHandle(hs.find((h) => h?.kind === "file" && h.name === first.name)));
+    handle(files);
   });
-  inputEl?.addEventListener("change", () => { handle(inputEl.files); inputEl.value = ""; });
+  if (!inputEl) return;
+  inputEl.addEventListener("change", () => { handle(inputEl.files); inputEl.value = ""; });
+  let usePicker = canPickOpen;
+  // ラベルのクリックも input.click() も、選択欄の click として届く
+  inputEl.addEventListener("click", (e) => {
+    if (!usePicker) return;
+    e.preventDefault();
+    pickOpen(inputEl).then((files) => {
+      if (files === null) { usePicker = false; toast("もう一度クリックしてファイルを選んでください"); return; }
+      if (files.length) handle(files);
+    });
+  });
 }
 
 // ---- ツール間の受け渡し（「○○で開く」） ----
@@ -189,6 +216,7 @@ function receive(onFiles: (files: File[]) => void, onFail?: () => void): boolean
 }
 
 initThemeToggle();
+initSaveDirButton(toast);
 // 別タブでテーマを変えたら追従する（保存はし直さない）
 window.addEventListener("storage", (e) => {
   if (e.key !== THEME_KEY) return;

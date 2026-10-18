@@ -37,6 +37,9 @@ def discover_redirects() -> list[str]:
     return sorted(p.relative_to(ROOT).as_posix() for p in (ROOT / "tools").glob("*.html") if is_redirect(p))
 
 
+HIDE_FSA = "delete window.showOpenFilePicker; delete window.showSaveFilePicker; delete window.showDirectoryPicker;"
+
+
 class _QuietHandler(http.server.SimpleHTTPRequestHandler):
     # GitHub Pages と同じく charset=utf-8 を付けて返す(<meta charset> のないページが文字化けしないように)
     extensions_map = {
@@ -74,5 +77,16 @@ def browser() -> Browser:
     executable = os.environ.get("PLAYWRIGHT_CHROMIUM_EXECUTABLE") or None
     with sync_playwright() as p:
         browser = p.chromium.launch(executable_path=executable)
+        # 既存のテストはダウンロード保存（expect_download）で確かめるので、Chromium の保存ダイアログ等を隠す。
+        # 保存ダイアログ・保存先フォルダのテスト（test_save_location.py）は raw_context で API を差し替えて使う
+        raw_new_context = browser.new_context
+
+        def new_context(**kwargs):
+            context = raw_new_context(**kwargs)
+            context.add_init_script(HIDE_FSA)
+            return context
+
+        browser.new_context = new_context
+        browser.raw_new_context = raw_new_context
         yield browser
         browser.close()
