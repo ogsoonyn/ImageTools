@@ -1,0 +1,33 @@
+/* ドット絵拡大ツール固有のスタイル */
+/* Layout: 左 = 設定パネル（固定幅）, 右 = 2 つの結果を左右に並べて見比べる。狭幅では縦積み */
+.grid-main{display:grid;grid-template-columns:300px minmax(0,1fr);gap:16px;align-items:start}
+@media (max-width:900px){.grid-main{grid-template-columns:minmax(0,1fr)}}
+.field{display:flex;flex-direction:column;gap:4px}
+.field .row{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.lbl{font-size:13px}
+.check{display:flex;gap:8px;align-items:center;font-size:13px;cursor:pointer}
+.grid-2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.srcthumb{border:1px solid var(--line);border-radius:8px;padding:8px;display:flex;justify-content:center;max-height:160px;overflow:auto}
+.srcthumb canvas{image-rendering:pixelated;max-width:100%}
+.swatches{display:flex;flex-wrap:wrap;gap:4px}
+.sw{width:22px;height:22px;border-radius:5px;border:1px solid var(--line);cursor:pointer;position:relative;padding:0}
+.sw[aria-pressed="true"]{outline:2.5px solid var(--accent);outline-offset:1px}
+.sw[aria-pressed="true"]::after{content:"";position:absolute;inset:6px;border-radius:50%;background:var(--accent);border:1.5px solid var(--panel)}
+.panes{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+@media (max-width:640px){.panes{grid-template-columns:minmax(0,1fr)}}
+.pane{display:flex;flex-direction:column;gap:8px;min-width:0}
+.pane-head{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.pane-head .select{flex:1 1 160px}
+.view{border:1px solid var(--line);border-radius:8px;overflow:auto;height:min(62vh,640px);min-height:240px;display:flex;align-items:flex-start;justify-content:flex-start;padding:12px;touch-action:none;cursor:grab}
+.view.fit{align-items:center;justify-content:center;cursor:default}
+.view.dragging{cursor:grabbing}
+.view canvas{image-rendering:pixelated;flex:none;display:block}
+.view.fit canvas{max-width:100%;max-height:100%;object-fit:contain}
+.view.bg-white{background:#ffffff}
+.view.bg-black{background:#000000}
+.pane-foot{display:flex;flex-wrap:wrap;justify-content:space-between;gap:4px 8px;align-items:center}
+.note{font-size:12px;color:var(--warn)}
+.busy{font-size:12px;color:var(--muted)}
+details.how summary{cursor:pointer;font-size:13px;color:var(--muted)}
+details.how p{font-size:12px;color:var(--muted);margin-top:6px}

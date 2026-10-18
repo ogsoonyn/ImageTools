@@ -1,31 +1,39 @@
 # ツールテンプレート
 
-`tool-template.html` は新規ツールの土台であり、既存ツールの見た目と挙動を揃えるための基準です。
-単一 HTML で完結し、外部 JS/CSS・Tailwind CDN・Web フォントを読み込みません(オフラインでもコンソール警告なしで動きます)。
+新規ツールの土台であり、既存ツールの見た目と挙動を揃えるための基準です。Vite でビルドする前提の 3 ファイルからなります。
+
+| ファイル | コピー先 | 内容 |
+|---|---|---|
+| `tool-template.html` | `tools/<tool-name>.html` | マークアップ(共通ヘッダー・トーストつき)。共通 CSS とツール固有の CSS・`main.ts` を読み込む |
+| `tool-template.ts` | `src/tools/<tool-name>/main.ts` | ツール固有のスクリプト。共通 JS は `import { IT } from "@common/it"` で使う |
+| `tool-template.css` | `src/tools/<tool-name>/style.css` | ツール固有のスタイル |
+
+外部 JS/CSS・Tailwind CDN・Web フォントは読み込みません(オフラインでもコンソール警告なしで動きます)。
 
 ## 新規ツールの作り方
 
-1. `tool-template.html` を `tools/<tool-name>.html` にコピーする(ファイル名は英小文字ケバブケース)。
+1. 上の表のとおり 3 つのファイルをコピーし、HTML 内の `tool-name` をファイル名(英小文字ケバブケース)に置き換える。
 2. `<title>` と、ヘッダー内の `<h1>`・説明文(`.hint`)を書き換える。表示名は日本語でよい。
-3. 「ここから下はツール固有」と書かれた部分(スタイル・本体の HTML・最後の `<script>`)を、ツールの処理に置き換える。
-   サンプル実装(画像を横に並べて PNG/JSON で保存)は、共通部品の使い方の例として残してある。
-4. `common:begin` 〜 `common:end` で囲まれたブロックは**原則そのまま**使う。足りないユーティリティクラスは
-   ツール固有のスタイル側に書き足す(共通化したほうがよいものは、後述の手順でテンプレートに戻す)。
-5. ブラウザで直接開き、コンソールにエラー・警告が出ないこと、ライト/ダーク切替・ドロップ・保存が動くことを確認する。
+3. HTML の本体と `main.ts`・`style.css` を、ツールの処理に置き換える。サンプル実装(画像を横に並べて PNG/JSON で保存)は、共通部品の使い方の例として残してある。
+   画像処理などの DOM に触れない処理は、`src/tools/<tool-name>/` の別ファイルに純粋な関数として分ける(例: `src/tools/pixel-upscaler/upscale.ts`)。
+4. HTML の `theme-init`・`header`・`toast` ブロックは**原則そのまま**使う。足りないユーティリティクラスはツール固有のスタイル側に書き足す(共通化したほうがよいものは `src/common/style.css` に足す)。
+5. `npm run dev` で開き、コンソールにエラー・警告が出ないこと、ライト/ダーク切替・ドロップ・保存が動くことを確認する。`npm run build` で型チェックも通す。
 6. ルートの `index.html`(ツール一覧)と `README.md` にツールを追記する。
 
-## 共通ブロック
+## 共通部品
 
-| ブロック名 | 場所 | 内容 |
+| 部品 | 場所 | 内容 |
 |---|---|---|
-| `theme-init` | `<head>` の `<script>` | 描画前に保存済みテーマ(`data-theme`)を反映し、ちらつきを防ぐ |
-| `theme-vars` | `<style>` | テーマ用 CSS 変数。`prefers-color-scheme` と `:root[data-theme]` の両対応 |
-| `base` | `<style>` | リセット、`body`・`.wrap`(16px ガター、セーフエリア対応)など |
-| `utilities` | `<style>` | Tailwind 互換の最小ユーティリティ(`flex`, `gap-2`, `text-sm` など) |
-| `components` | `<style>` | daisyUI 風の `btn` / `select` / `input` / `range` / `panel` / `badge` / `join` / `drop` / `stage` / `toast` など |
-| `header-style` / `header` | `<style>` / 本体 | 共通ヘッダー(ツール一覧 `../index.html` へのリンク、ツール名、テーマ切替ボタン) |
-| `toast` | 本体 | トースト表示用の要素 |
-| `common-js` | `<script>` | 共通 JS。グローバル `IT` を公開する |
+| `theme-init` | 各 HTML の `<head>` の `<script>` | 描画前に保存済みテーマ(`data-theme`)を反映し、ちらつきを防ぐ(読み込みを待たないようインラインのまま) |
+| テーマ変数 | `src/common/style.css` | テーマ用 CSS 変数。`prefers-color-scheme` と `:root[data-theme]` の両対応 |
+| base | `src/common/style.css` | リセット、`body`・`.wrap`(16px ガター、セーフエリア対応)など |
+| utilities | `src/common/style.css` | Tailwind 互換の最小ユーティリティ(`flex`, `gap-2`, `text-sm` など) |
+| components | `src/common/style.css` | daisyUI 風の `btn` / `select` / `input` / `range` / `panel` / `badge` / `join` / `drop` / `stage` / `toast` など |
+| ヘッダー | 各 HTML の `header` ブロック / `src/common/style.css` | 共通ヘッダー(ツール一覧 `../index.html` へのリンク、ツール名、テーマ切替ボタン) |
+| トースト | 各 HTML の `toast` ブロック | トースト表示用の要素 |
+| 共通 JS(`IT`) | `src/common/it.ts` | 下の表の API。`import { IT } from "@common/it"` |
+
+まだ TypeScript に移していないツール(#37)は、同じ CSS と JS を HTML 内の `common:begin` 〜 `common:end` ブロックにコピーで持っています。
 
 ### テーマ変数
 
@@ -56,18 +64,17 @@
 | `IT.initDrop({ zone, input, accept, onFiles, emptyMessage })` | ページ全体でドロップを受け付け、ドロップ中は `zone` に `.over` を付ける。`input`(`<input type=file>`)の選択も同じ `onFiles` に流す |
 | `IT.toast(msg, ms?)` | 画面下にトーストを表示 |
 | `IT.store.get(key, fallback)` / `set(key, value)` / `remove(key)` | `localStorage` の安全な読み書き(try/catch 済み、JSON で保存)。キーには自動で `imagetools:` が付く |
-| `IT.openIn(tool, files)` | ツール間の受け渡し(送る側)。`tools/<tool>.html#handoff` を新しいタブで開き、準備できた合図が来たら `files`(`File[]`、またはその `Promise`)を `postMessage` で渡す。タブはクリックの中で開くので、画像の用意は `Promise` で渡す(待ってから開くとポップアップとして止められる)。`file://` でも動く |
+| `IT.openIn(tool, files)` | ツール間の受け渡し(送る側)。`tools/<tool>.html#handoff` を新しいタブで開き、準備できた合図が来たら `files`(`File[]`、またはその `Promise`)を `postMessage` で渡す。タブはクリックの中で開くので、画像の用意は `Promise` で渡す(待ってから開くとポップアップとして止められる)。未移行のツールとも受け渡しできる |
 | `IT.receive(onFiles, onFail?)` | ツール間の受け渡し(受ける側)。起動時に呼ぶ。`#handoff` 付きで開かれていれば待ち受けて `true` を返し、届いた `File[]` を `onFiles`(ドロップと同じ処理を渡す)へ。届かなければ `onFail`。`true` のときはサンプルの自動読込などを省く |
 | `IT.applyTheme(theme)` / `IT.getTheme()` | テーマの変更・取得(`theme` は `auto` / `light` / `dark`)。テーマは `IT.store` ではなくこちらで扱う |
 
 ツール固有の設定を保存するときは、キーを `"<tool-name>:<設定名>"` のようにツール名で区切ってください。
 
-## 共通ブロックの更新手順
+## 共通部品の更新手順
 
-1. まず `templates/tool-template.html` の該当ブロックを修正し、テンプレート単体で動作確認する。
-2. `tools/` 配下の各ツールで、同じ名前の `common:begin xxx` 〜 `common:end xxx` の中身を差し替える。
+1. `src/common/style.css` か `src/common/it.ts` を直す。移したツールにはこれだけで反映される。
+2. まだ移していないツールにも同じ変更が要るときは、各ツールの `common:begin xxx` 〜 `common:end xxx` の中身を同じ PR で差し替える。
    ```sh
-   grep -n "common:begin" tools/*.html   # どのツールがどのブロックを持っているか確認
+   grep -L "src/tools/" tools/*.html   # まだ移していないツール(転送ページを含む)
    ```
-3. ブロックの名前や境界コメントは変えない(変える場合は全ツールを同じ PR でそろえる)。
-4. 1 つの PR でテンプレートと全ツールを更新し、各ツールをブラウザで開いて確認する。
+3. `npm run build` のあと `uv run pytest` を実行する。未移行のツールの共通 JS がそろっているかもテストで確かめている(`test_tool_linkage.py`)。

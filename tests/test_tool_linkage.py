@@ -127,12 +127,21 @@ def test_polish_without_handoff_loads_sample(browser: Browser, base_url: str):
 
 
 def test_common_js_is_identical():
-    """共通 JS(受け渡しを含む)はテンプレートと全ツールで同じであること。"""
+    """まだ移していないツールが HTML 内にコピーで持つ共通 JS(受け渡しを含む)は、どれも同じであること。
+    TypeScript に移したツールは src/common/it.ts を使うので、コピーを持たない。"""
     block = re.compile(r"<!-- common:begin common-js -->.*?<!-- common:end common-js -->", re.S)
     # 旧 URL を移すだけのページは共通部品を持たない
-    files = [ROOT / "templates/tool-template.html", *sorted(p for p in (ROOT / "tools").glob("*.html") if not is_redirect(p))]
-    blocks = {f.name: block.search(f.read_text(encoding="utf-8")).group(0) for f in files}
-    base = blocks["tool-template.html"]
+    tools = sorted(p for p in (ROOT / "tools").glob("*.html") if not is_redirect(p))
+    blocks, migrated = {}, []
+    for f in tools:
+        text = f.read_text(encoding="utf-8")
+        if m := block.search(text):
+            blocks[f.name] = m.group(0)
+        else:
+            migrated.append(f.name)
+            assert f'src="../src/tools/{f.stem}/main.ts"' in text, f"{f.name} に共通 JS も main.ts もない"
+    assert "pixel-upscaler.html" in migrated
+    base = next(iter(blocks.values()))
     assert "openIn" in base and "receive" in base
     assert [n for n, b in blocks.items() if b != base] == []
 
