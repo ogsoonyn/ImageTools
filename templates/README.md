@@ -33,8 +33,6 @@
 | トースト | 各 HTML の `toast` ブロック | トースト表示用の要素 |
 | 共通 JS(`IT`) | `src/common/it.ts` | 下の表の API。`import { IT } from "@common/it"` |
 
-まだ TypeScript に移していないツール(#37)は、同じ CSS と JS を HTML 内の `common:begin` 〜 `common:end` ブロックにコピーで持っています。
-
 ### テーマ変数
 
 既存 2 ツールの変数名を踏襲しています。
@@ -64,7 +62,7 @@
 | `IT.initDrop({ zone, input, accept, onFiles, emptyMessage })` | ページ全体でドロップを受け付け、ドロップ中は `zone` に `.over` を付ける。`input`(`<input type=file>`)の選択も同じ `onFiles` に流す |
 | `IT.toast(msg, ms?)` | 画面下にトーストを表示 |
 | `IT.store.get(key, fallback)` / `set(key, value)` / `remove(key)` | `localStorage` の安全な読み書き(try/catch 済み、JSON で保存)。キーには自動で `imagetools:` が付く |
-| `IT.openIn(tool, files)` | ツール間の受け渡し(送る側)。`tools/<tool>.html#handoff` を新しいタブで開き、準備できた合図が来たら `files`(`File[]`、またはその `Promise`)を `postMessage` で渡す。タブはクリックの中で開くので、画像の用意は `Promise` で渡す(待ってから開くとポップアップとして止められる)。未移行のツールとも受け渡しできる |
+| `IT.openIn(tool, files)` | ツール間の受け渡し(送る側)。`tools/<tool>.html#handoff` を新しいタブで開き、準備できた合図が来たら `files`(`File[]`、またはその `Promise`)を `postMessage` で渡す。タブはクリックの中で開くので、画像の用意は `Promise` で渡す(待ってから開くとポップアップとして止められる) |
 | `IT.receive(onFiles, onFail?)` | ツール間の受け渡し(受ける側)。起動時に呼ぶ。`#handoff` 付きで開かれていれば待ち受けて `true` を返し、届いた `File[]` を `onFiles`(ドロップと同じ処理を渡す)へ。届かなければ `onFail`。`true` のときはサンプルの自動読込などを省く |
 | `IT.applyTheme(theme)` / `IT.getTheme()` | テーマの変更・取得(`theme` は `auto` / `light` / `dark`)。テーマは `IT.store` ではなくこちらで扱う |
 
@@ -72,9 +70,5 @@
 
 ## 共通部品の更新手順
 
-1. `src/common/style.css` か `src/common/it.ts` を直す。移したツールにはこれだけで反映される。
-2. まだ移していないツールにも同じ変更が要るときは、各ツールの `common:begin xxx` 〜 `common:end xxx` の中身を同じ PR で差し替える。
-   ```sh
-   grep -L "src/tools/" tools/*.html   # まだ移していないツール(転送ページを含む)
-   ```
-3. `npm run build` のあと `uv run pytest` を実行する。未移行のツールの共通 JS がそろっているかもテストで確かめている(`test_tool_linkage.py`)。
+1. `src/common/style.css` か `src/common/it.ts` を直す。全ツールにこれだけで反映される。
+2. `npm run build` のあと `uv run pytest` を実行する。どのツールも共通 JS をコピーで持たず `@common/it` を使っているかもテストで確かめている(`test_tool_linkage.py`)。

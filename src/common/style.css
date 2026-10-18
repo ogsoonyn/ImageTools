@@ -1,5 +1,5 @@
 /* 全ツール共通のスタイル(テーマ変数・リセット・ユーティリティ・部品・ヘッダー)。
-   ツール固有のスタイルは src/tools/<name>/style.css に書く。まだ移していないツールは同じ内容を HTML 内にコピーで持っている */
+   ツール固有のスタイルは src/tools/<name>/style.css に書く */
 
 /* ---- theme-vars ---- */
 /* テーマ変数。既存ツールの変数名（--bg/--panel/--line/--fg/--muted/--accent/--accent-fg/--warn/--chk-*）を踏襲し、

@@ -1,5 +1,4 @@
-/* 全ツール共通の JS。各ツールの main.ts から `import { IT } from "@common/it"` で使う。
-   まだ移していないツールは、同じ処理を HTML 内の common-js ブロックにコピーで持っている(グローバル IT) */
+/* 全ツール共通の JS。各ツールの main.ts から `import { IT } from "@common/it"` で使う */
 
 const PREFIX = "imagetools:";
 
@@ -150,7 +149,6 @@ function initDrop({ zone, input, accept = () => true, onFiles, emptyMessage = "�
 //   タブはクリックの中で先に開く（画像の用意を待ってから開くとポップアップとして止められるため）
 // 受ける側: 起動時に receive(onFiles, onFail) を呼ぶ。#handoff 付きで開かれたときだけ待ち受けて true を返す
 //   （そのときはサンプルの自動読込などを省く）。届かなければ onFail を呼ぶ
-// 未移行のツール（HTML 内のコピー）とも同じ形のメッセージでやり取りする
 const HANDOFF = "imagetools:handoff";
 // file:// のページどうしは origin が一致しない（ブラウザにより "file://" か "null"）ので宛先を限定できない
 const msgOrigin = () => (location.protocol !== "file:" && location.origin && location.origin !== "null" ? location.origin : "*");

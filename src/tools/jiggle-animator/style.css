@@ -1,0 +1,27 @@
+/* 揺れものアニメーター固有のスタイル */
+/* Layout: 左 = 全体設定（固定幅）, 右 = 編集とプレビューを横並び → 領域の設定 → スプライトシート。狭幅では縦積み */
+.grid-main{display:grid;grid-template-columns:300px minmax(0,1fr);gap:16px;align-items:start}
+@media (max-width:860px){.grid-main{grid-template-columns:minmax(0,1fr)}}
+.views{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+@media (max-width:1100px){.views{grid-template-columns:minmax(0,1fr)}}
+.col{display:flex;flex-direction:column;gap:16px;min-width:0}
+.view-head{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
+.stage{min-height:200px;align-items:center}
+.stage canvas{max-width:none}
+.pixelated{image-rendering:pixelated}
+#editor{touch-action:none;cursor:default}
+.field{display:grid;grid-template-columns:7.5em minmax(0,1fr) 3.6em;align-items:center;gap:8px;font-size:13px}
+.field>output,.field>.unit{font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:12px;color:var(--muted);text-align:right}
+.field .select,.field .input{width:100%}
+.field-2{grid-template-columns:7.5em minmax(0,1fr)}
+.check{display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.params{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px}
+@media (max-width:1100px){.params{grid-template-columns:minmax(0,1fr)}}
+.params section{display:flex;flex-direction:column;gap:8px;min-width:0}
+.nums{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 10px}
+.nums label{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);white-space:nowrap}
+.nums .input{width:100%;min-width:0}
+.empty{padding:20px;text-align:center;color:var(--muted);font-size:13px}
+.sheet-wrap{overflow:auto;max-height:50vh;border-radius:8px;border:1px solid var(--line);padding:8px}
+.sheet-wrap canvas{display:block}

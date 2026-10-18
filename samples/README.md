@@ -1,7 +1,7 @@
 # samples
 
 各ツールの「サンプルを読み込む」ボタンが `fetch('../samples/...')` で読み込む素材です。
-GitHub Pages などの Web サーバー経由で開いたときだけ使えます（`file://` で開いた場合はボタンが無効になります）。
+GitHub Pages や `npm run dev` などの Web サーバー経由で開いて使います。
 
 | パス | 使うツール | 内容 |
 | --- | --- | --- |
@@ -9,7 +9,7 @@ GitHub Pages などの Web サーバー経由で開いたときだけ使えま�
 | `aseprite/slime.aseprite` | `tools/aseprite-sheet-converter.html` | 複数レイヤー・タグ付きのスライムのアニメーション |
 | `icon/sample-icon.png` | `tools/icon-generator.html` | 図形だけで描いた 1024×1024 の透過アイコン(山と太陽) |
 
-`tools/jiggle-animator.html` のサンプル(ドット絵のスライム、イラストのゼリー)はファイルを使わず、ツール内のコードで図形を組み合わせてその場で描きます。そのため `file://` で開いた場合も使えます。`tools/frame-sorter.html` のサンプル(光の玉・星・四角・火花を不揃いに並べた画像)もコードで描きます。`tools/pixel-upscaler.html` のサンプル(1ドットの輪郭のスライム 2 コマ)は、ツール内に書いたドットの並びから作ります。
+`tools/jiggle-animator.html` のサンプル(ドット絵のスライム、イラストのゼリー)はファイルを使わず、ツール内のコードで図形を組み合わせてその場で描きます。`tools/frame-sorter.html` のサンプル(光の玉・星・四角・火花を不揃いに並べた画像)もコードで描きます。`tools/pixel-upscaler.html` のサンプル(1ドットの輪郭のスライム 2 コマ)は、ツール内に書いたドットの並びから作ります。
 
 ## 出所とライセンス
 
