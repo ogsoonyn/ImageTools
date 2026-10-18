@@ -81,26 +81,31 @@ function idbRun<T>(mode: IDBTransactionMode, fn: (s: IDBObjectStore) => IDBReque
   });
 }
 let saveDir: FileSystemDirectoryHandle | null = null;
+let dirTouched = false; // 読み出しより先に設定・解除されたら、遅れて届いた古い値で上書きしない
+// 待つのは 2 秒まで。読み出しが遅れて終わったときも、届いた時点で反映する
 export const saveDirReady: Promise<void> = canPickDir
-  ? idb<FileSystemDirectoryHandle>("readonly", (s) => s.get(DIR_KEY)).then((h) => { saveDir = h && h.kind === "directory" ? h : null; })
+  ? Promise.race([
+    idbRun<FileSystemDirectoryHandle>("readonly", (s) => s.get(DIR_KEY)).then((h) => { if (!dirTouched) saveDir = h && h.kind === "directory" ? h : null; }),
+    new Promise<void>((r) => setTimeout(r, 2000)),
+  ])
   : Promise.resolve();
 export const getSaveDir = () => saveDir;
 export async function chooseSaveDir(): Promise<FileSystemDirectoryHandle | null> {
   let h: FileSystemDirectoryHandle;
   try { h = await w.showDirectoryPicker!({ id: "imagetools-savedir", mode: "readwrite", startIn: saveDir || lastLoaded || undefined }); }
   catch { return null; }
-  saveDir = h;
+  saveDir = h; dirTouched = true;
   await idb("readwrite", (s) => s.put(h, DIR_KEY));
   return h;
 }
 export async function clearSaveDir(): Promise<void> {
-  saveDir = null;
+  saveDir = null; dirTouched = true;
   await idb("readwrite", (s) => s.delete(DIR_KEY));
 }
 
 // ---- 保存 ----
 /** saved = 保存した / cancelled = 利用者が止めた / fallback = この方法では保存できない（ダウンロード保存に回す） */
-export type SaveResult = { status: "saved"; where: string } | { status: "cancelled"; message: string } | { status: "fallback"; message?: string };
+export type SaveResult = { status: "saved"; where: string } | { status: "cancelled"; message: string; declined?: boolean } | { status: "fallback"; message?: string };
 const SAVE_TYPES: Record<string, PickerType> = {
   png: { description: "PNG 画像", accept: { "image/png": [".png"] } },
   gif: { description: "GIF 画像", accept: { "image/gif": [".gif"] } },
@@ -131,7 +136,7 @@ async function saveToDir(dir: FileSystemDirectoryHandle, filename: string, blob:
     if (name === "TypeError") return { status: "cancelled", message: filename + " にはファイル名に使えない文字が含まれています" };
     if (name !== "NotFoundError") return null;
   }
-  if (exists && !confirm(`${dir.name} に ${filename} がすでにあります。上書きしますか？`)) return { status: "cancelled", message: "保存をキャンセルしました" };
+  if (exists && !confirm(`${dir.name} に ${filename} がすでにあります。上書きしますか？`)) return { status: "cancelled", message: "保存をキャンセルしました", declined: true };
   try { await write(await dir.getFileHandle(filename, { create: true }), blob); }
   catch { return null; }
   return { status: "saved", where: dir.name + "/" + filename };
@@ -175,13 +180,18 @@ export async function saveLocalMany(files: { filename: string; blob: Blob }[]): 
     try { dir = await w.showDirectoryPicker!({ id: "imagetools-savemany", mode: "readwrite", startIn: lastLoaded || undefined }); }
     catch (e) { return isAbort(e) ? { status: "cancelled", message: "保存をキャンセルしました" } : { status: "fallback", message: NO_GESTURE }; }
   }
-  for (const [i, f] of files.entries()) {
+  // 上書きを断ったファイルは飛ばして続ける。途中で書けなくなったら、そこまでに保存できた数を伝える
+  let saved = 0;
+  for (const f of files) {
     const r = await saveToDir(dir, f.filename, f.blob);
-    if (r?.status === "cancelled") return r;
-    if (!r) return i ? { status: "cancelled", message: f.filename + " を書き込めませんでした" }
-      : { status: "fallback", message: `${dir.name} フォルダに書き込めないため、ダウンロードとして保存しました` };
+    if (r?.status === "saved") { saved++; continue; }
+    if (r?.status === "cancelled" && r.declined) continue;
+    if (!r && !saved) return { status: "fallback", message: `${dir.name} フォルダに書き込めないため、ダウンロードとして保存しました` };
+    const why = r?.status === "cancelled" ? r.message : f.filename + " を書き込めませんでした";
+    return { status: "cancelled", message: `${why}（${files.length} 個中 ${saved} 個を保存済み）` };
   }
-  return { status: "saved", where: `${files.length} 個のファイルを「${dir.name}」フォルダ` };
+  if (!saved) return { status: "cancelled", message: "保存をキャンセルしました" };
+  return { status: "saved", where: `${saved === files.length ? "" : files.length + " 個中 "}${saved} 個のファイルを「${dir.name}」フォルダ` };
 }
 
 // ---- ヘッダーの「保存先」ボタンと設定ダイアログ ----
