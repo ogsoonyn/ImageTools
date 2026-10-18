@@ -1,0 +1,38 @@
+/* ドット絵 中割りツール固有のスタイル */
+/* Layout: 左 = 入力と補完の設定（固定幅）, 右 = コマの並び・手直し・プレビュー。狭幅では縦積み */
+.grid-main{display:grid;grid-template-columns:320px minmax(0,1fr);gap:16px;align-items:start}
+@media (max-width:900px){.grid-main{grid-template-columns:minmax(0,1fr)}}
+.field{display:flex;flex-direction:column;gap:4px}
+.field .row{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.lbl{font-size:13px}
+.grid-2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.chk{display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer}
+.toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.sep{width:1px;align-self:stretch;background:var(--line)}
+input[type=color]{width:36px;height:28px;border:1px solid var(--line);border-radius:6px;background:var(--bg);padding:2px;cursor:pointer}
+.keyrow{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:8px;padding:4px 6px}
+.keyrow canvas{width:36px;height:36px;image-rendering:pixelated;border-radius:4px;flex:none}
+.keyrow .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px}
+.segrow{display:grid;grid-template-columns:auto 1fr 1fr;gap:6px;align-items:center;font-size:12px}
+.segrow .tag{font-family:var(--font-mono);color:var(--muted);white-space:nowrap}
+.timeline{display:flex;gap:6px;overflow-x:auto;padding:4px 2px 8px}
+.tl{flex:none;display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer;border-radius:8px;padding:3px;border:1px solid transparent}
+.tl canvas{width:52px;height:52px;image-rendering:pixelated;border:1px solid var(--line);border-radius:5px;display:block}
+.tl .cap{font-size:10px;font-family:var(--font-mono);color:var(--muted);line-height:1.2;white-space:nowrap}
+.tl.key canvas{border-color:var(--fg)}
+.tl.key .cap{color:var(--fg);font-weight:700}
+.tl.sel{border-color:var(--accent);background:var(--accent-soft)}
+.tl .ed{color:var(--warn);font-weight:700}
+#edStage{border:1px solid var(--line);border-radius:8px;overflow:auto;max-height:64vh;padding:12px;background:var(--surface-2);display:flex;justify-content:center;align-items:flex-start}
+#ed{image-rendering:pixelated;touch-action:none;cursor:crosshair;max-width:none;display:block}
+#ed.t-select{cursor:default}
+.palette{display:flex;flex-wrap:wrap;gap:3px}
+.sw{width:20px;height:20px;border-radius:4px;border:1px solid var(--line);cursor:pointer;padding:0}
+.sw.on{outline:2px solid var(--accent);outline-offset:1px}
+.pvbox{display:flex;justify-content:center;align-items:center;min-height:160px;border-radius:8px;border:1px solid var(--line);padding:8px}
+#pv{image-rendering:pixelated;max-width:100%}
+.banner{border:1px solid var(--warn);border-radius:8px;padding:8px 12px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between}
+.empty{padding:32px 12px;text-align:center;color:var(--muted);font-size:13px}
+.kbd{font-family:var(--font-mono);font-size:11px;border:1px solid var(--line);border-radius:4px;padding:0 4px;color:var(--muted)}
+.cols-2{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:16px;align-items:start}
+@media (max-width:1100px){.cols-2{grid-template-columns:minmax(0,1fr)}}
