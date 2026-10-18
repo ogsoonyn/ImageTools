@@ -236,14 +236,16 @@ def test_aseprite_to_frame_sorter(browser: Browser, base_url: str):
         assert fs.evaluate("S.name") == png_name
         # タグごとに 1 アニメ。入れ子のタグ(「セル」と「セル/タグ」)では、コマは一番狭いタグに入る
         tags = saved["meta"]["frameTags"]
-        leaf = []
+        owner = []
         for i in range(len(saved["frames"])):
             best = None
-            for t in tags:
-                if t["from"] <= i <= t["to"] and (best is None or t["to"] - t["from"] <= best["to"] - best["from"]):
-                    best = t
-            if best and best["name"] not in leaf:
-                leaf.append(best["name"])
+            for k, t in enumerate(tags):
+                if t["from"] <= i <= t["to"] and (best is None or t["to"] - t["from"] <= tags[best]["to"] - tags[best]["from"]):
+                    best = k
+            owner.append(best)
+        # アニメはタグの一覧の順に並ぶ(このサンプルは絵の無いコマが無い)
+        leaf = [t["name"] for k, t in enumerate(tags) if k in owner]
+        assert fs.evaluate("S.dropped") == 0
         assert fs.evaluate("S.groups.map((g) => g.name)") == leaf
         assert "cell0/idle" in leaf and "cell0" not in leaf
         # 各コマは JSON の矩形の中に収まっている
