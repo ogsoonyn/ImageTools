@@ -15,7 +15,7 @@ import pytest
 from playwright.sync_api import Browser, sync_playwright
 
 ROOT = Path(__file__).resolve().parent.parent
-# 配信するディレクトリ。既定はビルド結果(npm run build の出力)。TypeScript に移したツールはビルドしないと動かない
+# 配信するディレクトリ。既定はビルド結果(npm run build の出力)。ツールはビルドしないと動かない
 SITE = (ROOT / os.environ.get("SITE_DIR", "dist")).resolve()
 
 

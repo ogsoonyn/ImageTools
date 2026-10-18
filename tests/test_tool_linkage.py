@@ -114,15 +114,17 @@ def test_polish_without_handoff_loads_sample(browser: Browser, base_url: str):
 
 
 def test_tools_use_common_module():
-    """どのツールも共通 JS を HTML にコピーで持たず、src/tools/<ツール名>/main.ts から src/common/it.ts を使うこと。"""
+    """どのツールも共通 CSS・JS を HTML にコピーで持たず、src/tools/<ツール名>/main.ts から src/common/it.ts を使うこと。"""
     # 旧 URL を移すだけのページは共通部品を持たない
     tools = sorted(p for p in (ROOT / "tools").glob("*.html") if not is_redirect(p))
     assert tools
     for f in tools:
         text = f.read_text(encoding="utf-8")
-        assert "common:begin common-js" not in text, f"{f.name} に共通 JS のコピーが残っている"
+        blocks = set(re.findall(r"common:begin (\S+)", text))
+        assert blocks <= {"theme-init", "header", "toast"}, f"{f.name} に共通部品のコピーが残っている: {blocks}"
         assert f'src="../src/tools/{f.stem}/main.ts"' in text, f"{f.name} が main.ts を読み込んでいない"
-        assert 'from "@common/it"' in (ROOT / "src/tools" / f.stem / "main.ts").read_text(encoding="utf-8")
+        main = (ROOT / "src/tools" / f.stem / "main.ts").read_text(encoding="utf-8")
+        assert 'from "@common/it"' in main, f"{f.stem}/main.ts が @common/it を import していない"
 
 
 def _open_tool(browser: Browser, base_url: str, path: str, ready: str):
