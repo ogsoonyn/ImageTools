@@ -23,12 +23,13 @@ const isAbort = (e: unknown) => (e as { name?: string } | null)?.name === "Abort
 
 // ---- 最後に読み込んだファイル（保存ダイアログを同じフォルダで開くため。このページの中だけ覚える） ----
 let lastLoaded: FileSystemFileHandle | null = null;
+/** ハンドルの無い読み込み（選択欄・ブラウザからのドラッグ・受け渡し）では null を渡して忘れる */
 export function setLoadedHandle(h: FileSystemHandle | null | undefined): void {
-  if (h && h.kind === "file") lastLoaded = h as FileSystemFileHandle;
+  lastLoaded = h && h.kind === "file" ? (h as FileSystemFileHandle) : null;
 }
 
 // ---- 読み込み: <input type=file> の accept からダイアログの種類を作る ----
-const IMAGE_EXTS = [".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".svg"];
+const IMAGE_EXTS = [".png", ".apng", ".jpg", ".jpeg", ".jfif", ".gif", ".bmp", ".webp", ".avif", ".svg", ".ico", ".tif", ".tiff"];
 const MIME_EXTS: Record<string, string[]> = {
   "image/png": [".png"], "image/jpeg": [".jpg", ".jpeg"], "image/gif": [".gif"], "image/bmp": [".bmp"],
   "image/webp": [".webp"], "image/svg+xml": [".svg"], "application/json": [".json"],
@@ -60,6 +61,10 @@ export async function pickOpen(input: HTMLInputElement): Promise<File[] | null> 
 // ---- 保存先フォルダの記憶（IndexedDB。ハンドルは localStorage に入らない） ----
 const DB = "imagetools", STORE = "handles", DIR_KEY = "saveDir";
 function idb<T>(mode: IDBTransactionMode, fn: (s: IDBObjectStore) => IDBRequest): Promise<T | undefined> {
+  // 開けないまま終わらないことがあっても保存を止めないよう、2 秒で諦める
+  return Promise.race([idbRun<T>(mode, fn), new Promise<undefined>((r) => setTimeout(r, 2000))]);
+}
+function idbRun<T>(mode: IDBTransactionMode, fn: (s: IDBObjectStore) => IDBRequest): Promise<T | undefined> {
   return new Promise((res) => {
     let req: IDBOpenDBRequest;
     try { req = indexedDB.open(DB, 1); } catch { res(undefined); return; }
@@ -123,6 +128,7 @@ async function saveToDir(dir: FileSystemDirectoryHandle, filename: string, blob:
     const name = (e as { name?: string } | null)?.name;
     // NotFoundError = まだ無い（普通）。TypeMismatchError = 同名のフォルダがある。それ以外はフォルダが消えた等
     if (name === "TypeMismatchError") return { status: "cancelled", message: filename + " と同じ名前のフォルダがあるため保存できません" };
+    if (name === "TypeError") return { status: "cancelled", message: filename + " にはファイル名に使えない文字が含まれています" };
     if (name !== "NotFoundError") return null;
   }
   if (exists && !confirm(`${dir.name} に ${filename} がすでにあります。上書きしますか？`)) return { status: "cancelled", message: "保存をキャンセルしました" };
@@ -130,14 +136,18 @@ async function saveToDir(dir: FileSystemDirectoryHandle, filename: string, blob:
   catch { return null; }
   return { status: "saved", where: dir.name + "/" + filename };
 }
+// ダイアログはクリックの直後（約 5 秒以内）にしか出せない。書き出しの準備が長かったときなどはダウンロードに回す
+const NO_GESTURE = "クリックから時間がたって保存ダイアログを出せなかったため、ダウンロードフォルダに保存しました";
+const gestureGone = () => (navigator as Navigator & { userActivation?: { isActive: boolean } }).userActivation?.isActive === false;
 async function saveWithPicker(filename: string, blob: Blob): Promise<SaveResult> {
+  if (gestureGone()) return { status: "fallback", message: NO_GESTURE };
   let h: FileSystemFileHandle;
   try {
     const t = SAVE_TYPES[filename.split(".").pop()!.toLowerCase()];
     h = await w.showSaveFilePicker!({ suggestedName: filename, types: t ? [t] : undefined, id: "imagetools-save", startIn: lastLoaded || undefined });
   } catch (e) {
     // キャンセル以外（クリックから時間がたってダイアログを出せない等）はダウンロード保存に回す
-    return isAbort(e) ? { status: "cancelled", message: "保存をキャンセルしました" } : { status: "fallback" };
+    return isAbort(e) ? { status: "cancelled", message: "保存をキャンセルしました" } : { status: "fallback", message: NO_GESTURE };
   }
   try { await write(h, blob); }
   catch { return { status: "cancelled", message: h.name + " を書き込めませんでした" }; }
@@ -154,6 +164,24 @@ export async function saveLocal(filename: string, blob: Blob): Promise<SaveResul
   }
   if (canPickSave) return saveWithPicker(filename, blob);
   return { status: "fallback" };
+}
+/** 複数のファイルをまとめて保存する。保存先フォルダが未設定ならフォルダを1回だけ選んでもらう（ファイルごとにダイアログを出すと 2 つ目以降が出せないため） */
+export async function saveLocalMany(files: { filename: string; blob: Blob }[]): Promise<SaveResult> {
+  await saveDirReady;
+  let dir = saveDir;
+  if (!dir) {
+    if (!canPickDir) return { status: "fallback" };
+    if (gestureGone()) return { status: "fallback", message: NO_GESTURE };
+    try { dir = await w.showDirectoryPicker!({ id: "imagetools-savemany", mode: "readwrite", startIn: lastLoaded || undefined }); }
+    catch (e) { return isAbort(e) ? { status: "cancelled", message: "保存をキャンセルしました" } : { status: "fallback", message: NO_GESTURE }; }
+  }
+  for (const [i, f] of files.entries()) {
+    const r = await saveToDir(dir, f.filename, f.blob);
+    if (r?.status === "cancelled") return r;
+    if (!r) return i ? { status: "cancelled", message: f.filename + " を書き込めませんでした" }
+      : { status: "fallback", message: `${dir.name} フォルダに書き込めないため、ダウンロードとして保存しました` };
+  }
+  return { status: "saved", where: `${files.length} 個のファイルを「${dir.name}」フォルダ` };
 }
 
 // ---- ヘッダーの「保存先」ボタンと設定ダイアログ ----
@@ -175,8 +203,9 @@ export function initSaveDirButton(toast: (m: string) => void): void {
 
   const dlg = document.createElement("dialog");
   dlg.className = "it-dialog"; dlg.id = "saveDirDialog";
-  dlg.innerHTML = `<h2>保存先</h2>
-    <p class="hint">フォルダを設定すると、保存ボタンでそのフォルダへダイアログなしで保存します（同じ名前のファイルがあれば上書きしてよいか確認します）。設定しないときは保存のたびにダイアログを開き、最初は読み込んだファイルのフォルダを表示します。設定は全ツール共通で、このブラウザに記憶します。</p>
+  dlg.setAttribute("aria-labelledby", "saveDirTitle"); dlg.setAttribute("aria-describedby", "saveDirDesc");
+  dlg.innerHTML = `<h2 id="saveDirTitle">保存先</h2>
+    <p class="hint" id="saveDirDesc">フォルダを設定すると、保存ボタンでそのフォルダへダイアログなしで保存します（同じ名前のファイルがあれば上書きしてよいか確認します）。設定しないときは保存のたびにダイアログを開き、最初は読み込んだファイルのフォルダを表示します。設定は全ツール共通で、このブラウザに記憶します。ダウンロードやデスクトップなどのフォルダそのものは、ブラウザの制限で選べないことがあります（その中に作ったフォルダなら選べます）。</p>
     <p class="text-sm">いまの保存先: <b data-cur></b></p>
     <div class="acts">
       <button class="btn btn-primary" type="button" data-act="pick">フォルダを選ぶ</button>
@@ -191,7 +220,9 @@ export function initSaveDirButton(toast: (m: string) => void): void {
   };
   btn.addEventListener("click", async () => { await saveDirReady; sync(); dlg.showModal(); });
   dlg.addEventListener("click", async (e) => {
-    if (e.target === dlg) { dlg.close(); return; } // 枠の外（背景）をクリックで閉じる
+    // 枠の外（背景）をクリックで閉じる。target だけでは枠の内側の余白と区別できないので位置で見る
+    const r = dlg.getBoundingClientRect();
+    if (e.target === dlg && (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom)) { dlg.close(); return; }
     const act = (e.target as HTMLElement).closest<HTMLElement>("[data-act]")?.dataset.act;
     if (act === "close") dlg.close();
     else if (act === "pick") { const h = await chooseSaveDir(); sync(); if (h) { dlg.close(); toast(`保存先を「${h.name}」フォルダにしました`); } }

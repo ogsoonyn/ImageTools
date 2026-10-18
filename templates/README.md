@@ -58,6 +58,7 @@
 | API | 説明 |
 |---|---|
 | `IT.saveFile(filename, data)` | 通常ブラウザでは、Chrome・Edge なら保存先フォルダ(ヘッダーの「保存先」で設定。IndexedDB に記憶し全ツール共通)へ直接書き込み、未設定なら保存ダイアログを最後に読み込んだファイルのフォルダで開く(`src/common/save.ts`)。その API が無いブラウザ(Firefox・Safari)やダイアログを出せないときは `<a download>`。`window.claude.use('downloads')` が使えるアーティファクト内ではそれで保存。結果はトーストで通知し、保存できたかを `Promise<boolean>` で返す。`data` は `Blob` / 文字列など |
+| `IT.saveFiles([{ filename, data }, ...])` | 複数のファイルをまとめて保存する。保存先フォルダが未設定なら、ファイルごとにダイアログを出さずフォルダを1回だけ選んでもらう(2 つ目以降のダイアログはクリックから時間がたって出せないため)。1 つなら `saveFile` と同じ |
 | `IT.canvasToBlob(canvas, type?)` | canvas を `Blob` に変換(`saveFile` と組み合わせて PNG 保存) |
 | `IT.initDrop({ zone, input, accept, onFiles, emptyMessage })` | ページ全体でドロップを受け付け、ドロップ中は `zone` に `.over` を付ける。`input`(`<input type=file>`)の選択も同じ `onFiles` に流す。Chrome・Edge では `input` のクリックを専用のファイル選択ダイアログに切り替え、ドロップと合わせて読み込んだファイルのハンドルを覚える(保存ダイアログを同じフォルダで開くため) |
 | `IT.toast(msg, ms?)` | 画面下にトーストを表示 |

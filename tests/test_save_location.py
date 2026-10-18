@@ -157,3 +157,46 @@ def test_without_api_there_is_no_save_folder_button(browser: Browser, base_url: 
             page.click("#btnPng")
     finally:
         page.context.close()
+
+
+def test_falls_back_to_download_with_reason_when_gesture_is_gone(browser: Browser, base_url: str):
+    # クリックの直後でない(ユーザー操作が切れた)ときは保存ダイアログを出さず、理由を出してダウンロード保存する
+    context = browser.raw_new_context(accept_downloads=True)
+    context.add_init_script(MOCK)
+    page = context.new_page()
+    try:
+        page.goto(f"{base_url}/{TOOL}")
+        page.get_by_role("button", name="サンプルを読み込む").click()
+        expect(page.locator("#btnPng")).to_be_enabled(timeout=10_000)
+        # 本物は 5 秒ほどで切れる。待たずに「切れた」ことにする
+        page.evaluate("Object.defineProperty(navigator, 'userActivation', { get: () => ({ isActive: false, hasBeenActive: true }) })")
+        with page.expect_download():
+            page.click("#btnPng")
+        expect(page.locator("#toast")).to_contain_text("ダウンロードフォルダに保存しました")
+        assert _picks(page) == []
+    finally:
+        context.close()
+
+
+def test_multiple_sheets_go_to_the_save_folder_together(browser: Browser, base_url: str):
+    # シート仕上げで差分を別ファイルにするとシートが2枚以上になる。保存先フォルダが未設定なら、フォルダを1回だけ選んで全部書く
+    context = browser.raw_new_context()
+    context.add_init_script(MOCK)
+    page = context.new_page()
+    errors: list[str] = []
+    page.on("pageerror", lambda err: errors.append(str(err)))
+    try:
+        page.goto(f"{base_url}/tools/sprite-polish.html")
+        page.wait_for_function("() => window.doc && doc.frames.length > 0", timeout=10_000)
+        page.select_option("#exportVar", "files")  # サンプルには差分が1つあるので、差分ごとのファイルにすると2枚になる
+        n = page.evaluate("exportSets().length")
+        assert n >= 2
+        page.click("#btnJson")
+        expect(page.locator("#toast")).to_contain_text(f"{n} 個のファイルを「out」フォルダに保存しました")
+        assert [p["kind"] for p in _picks(page)] == ["dir"]
+        names = page.evaluate("exportSets().map(s => pngName(s).replace(/\\.png$/, '.json'))")
+        for name in names:
+            assert page.evaluate("(n) => window.__readOpfs('out', n)", name) > 0
+        assert errors == []
+    finally:
+        context.close()

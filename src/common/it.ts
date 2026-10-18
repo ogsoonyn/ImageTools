@@ -1,6 +1,6 @@
 /* 全ツール共通の JS。各ツールの main.ts から `import { IT } from "@common/it"` で使う */
 
-import { canPickOpen, initSaveDirButton, pickOpen, saveLocal, setLoadedHandle } from "./save";
+import { canPickOpen, initSaveDirButton, pickOpen, saveLocal, saveLocalMany, setLoadedHandle } from "./save";
 
 const PREFIX = "imagetools:";
 
@@ -81,6 +81,13 @@ function getDownloads(): Promise<Downloads | "anchor" | null> {
 }
 getDownloads();
 const SAVE_ERRORS: Record<string, string> = { declined: "保存をキャンセルしました", rate_limited: "保存が続いたため一時的に制限されています。少し待ってからお試しください" };
+function downloadAnchor(filename: string, data: Blob | string): void {
+  const url = URL.createObjectURL(data instanceof Blob ? data : new Blob([data]));
+  const a = document.createElement("a");
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
 async function saveFile(filename: string, data: Blob | string): Promise<boolean> {
   const dl = await getDownloads();
   if (dl === "anchor") {
@@ -88,11 +95,7 @@ async function saveFile(filename: string, data: Blob | string): Promise<boolean>
     const r = await saveLocal(filename, blob);
     if (r.status === "saved") { toast(r.where + " を保存しました"); return true; }
     if (r.status === "cancelled") { toast(r.message); return false; }
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url; a.download = filename;
-    document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 4000);
+    downloadAnchor(filename, blob);
     toast(r.message || filename + " を保存しました", r.message ? 4000 : undefined);
     return true;
   }
@@ -107,6 +110,22 @@ async function saveFile(filename: string, data: Blob | string): Promise<boolean>
     toast(SAVE_ERRORS[code] || "保存できませんでした（" + code + "）");
     return false;
   }
+}
+// 複数のファイルをまとめて保存する（保存先フォルダが未設定なら、フォルダを1回だけ選んでもらう）
+async function saveFiles(files: { filename: string; data: Blob | string }[]): Promise<boolean> {
+  if (files.length === 1) return saveFile(files[0].filename, files[0].data);
+  if (!files.length) return true;
+  if ((await getDownloads()) === "anchor") {
+    const r = await saveLocalMany(files.map((f) => ({ filename: f.filename, blob: f.data instanceof Blob ? f.data : new Blob([f.data]) })));
+    if (r.status === "saved") { toast(r.where + "に保存しました"); return true; }
+    if (r.status === "cancelled") { toast(r.message); return false; }
+    if (r.message) toast(r.message, 4000);
+    for (const f of files) downloadAnchor(f.filename, f.data);
+    if (!r.message) toast(files.length + " 個のファイルを保存しました");
+    return true;
+  }
+  for (const f of files) if (!(await saveFile(f.filename, f.data))) return false;
+  return true;
 }
 function canvasToBlob(canvas: HTMLCanvasElement, type = "image/png"): Promise<Blob> {
   return new Promise((res, rej) => canvas.toBlob((b) => (b ? res(b) : rej(new Error("toBlob failed"))), type));
@@ -154,10 +173,11 @@ function initDrop({ zone, input, accept = () => true, onFiles, emptyMessage = "�
     const files = [...(e.dataTransfer?.files || [])];
     const first = files.find(accept);
     if (first) Promise.all(handles).then((hs) => setLoadedHandle(hs.find((h) => h?.kind === "file" && h.name === first.name)));
+    else setLoadedHandle(null);
     handle(files);
   });
   if (!inputEl) return;
-  inputEl.addEventListener("change", () => { handle(inputEl.files); inputEl.value = ""; });
+  inputEl.addEventListener("change", () => { setLoadedHandle(null); handle(inputEl.files); inputEl.value = ""; });
   let usePicker = canPickOpen;
   // ラベルのクリックも input.click() も、選択欄の click として届く
   inputEl.addEventListener("click", (e) => {
@@ -206,6 +226,7 @@ function receive(onFiles: (files: File[]) => void, onFail?: () => void): boolean
     if (msgOrigin() !== "*" && e.origin !== location.origin) return;
     window.removeEventListener("message", onMsg); clearTimeout(timer);
     const files = [...((e.data.files as unknown[]) || [])].filter((f): f is File => f instanceof File);
+    setLoadedHandle(null);
     if (files.length) onFiles(files); else if (onFail) onFail();
   };
   window.addEventListener("message", onMsg);
@@ -226,4 +247,4 @@ window.addEventListener("storage", (e) => {
   if (btn) btn.textContent = THEME_LABEL[getTheme()];
 });
 
-export const IT = { store, toast, saveFile, canvasToBlob, initDrop, applyTheme, getTheme, openIn, receive };
+export const IT = { store, toast, saveFile, saveFiles, canvasToBlob, initDrop, applyTheme, getTheme, openIn, receive };
