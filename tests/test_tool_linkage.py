@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 from playwright.sync_api import Browser, ConsoleMessage, Page, expect
 
-from conftest import ROOT, SITE, is_redirect
+from conftest import ROOT, is_redirect
 
 SENDERS = [
     "tools/aseprite-sheet-converter.html",
