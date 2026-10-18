@@ -867,14 +867,15 @@ $btn("btnPng").addEventListener("click", async () => {
   if (float) stampFloat();
   const bad = doc!.frames.filter(overflows).length;
   try {
-    for (const set of exportSets()) if (!(await IT.saveFile(pngName(set), await IT.canvasToBlob(renderSheet(set))))) break;
+    const files = [];
+    for (const set of exportSets()) files.push({ filename: pngName(set), data: await IT.canvasToBlob(renderSheet(set)) });
+    await IT.saveFiles(files);
     if (bad) IT.toast(bad + " コマがセルからはみ出していて、はみ出した所は切れています", 4000);
   } catch { IT.toast("PNGを作成できませんでした"); }
 });
 $btn("btnJson").addEventListener("click", async () => {
   if (float) stampFloat();
-  for (const set of exportSets())
-    if (!(await IT.saveFile(pngName(set).replace(/\.png$/, ".json"), new Blob([JSON.stringify(asepriteJson(set), null, 2)], { type: "application/json" })))) break;
+  IT.saveFiles(exportSets().map((set) => ({ filename: pngName(set).replace(/\.png$/, ".json"), data: new Blob([JSON.stringify(asepriteJson(set), null, 2)], { type: "application/json" }) })));
 });
 
 // ---- ほかのツールで開く ----
