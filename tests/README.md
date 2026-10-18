@@ -41,6 +41,7 @@ uv run playwright install chromium                 # 初回のみ
 Ubuntu / Windows 共通です。
 
 ```bash
+npm test                 # ビルドしてからすべて実行(npm run build && uv run pytest と同じ)
 npm run build            # 先にビルドする(ツールを直したら毎回)
 uv run pytest            # すべて
 uv run pytest -v -k sprite_sheet   # 名前で絞り込み

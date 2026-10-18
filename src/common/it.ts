@@ -69,9 +69,10 @@ declare global {
 let downloadsP: Promise<Downloads | "anchor" | null> | null = null;
 function getDownloads(): Promise<Downloads | "anchor" | null> {
   if (!downloadsP) {
-    const use = window.claude?.use;
-    downloadsP = typeof use === "function"
-      ? Promise.resolve().then(() => use("downloads") as Downloads | null).then((d) => d || null, () => null)
+    // use は window.claude のメソッドとして呼ぶ（取り出して呼ぶと this が外れる）
+    const c = window.claude;
+    downloadsP = typeof c?.use === "function"
+      ? Promise.resolve().then(() => c.use!("downloads") as Downloads | null).then((d) => d || null, () => null)
       : Promise.resolve("anchor" as const);
   }
   return downloadsP;
