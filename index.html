@@ -79,13 +79,13 @@ footer a{color:var(--fg)}
       <span class="file" aria-hidden="true">tools/aseprite-sheet-converter.html</span>
     </li>
     <li class="card">
-      <h2><a href="tools/keyout-sprite-packer.html">Keyout Sprite Packer</a></h2>
-      <p class="desc">連番PNGのキーカラー(マゼンタ等)を透過に変換し、1枚のスプライトシートにまとめます。1枚だけ渡すと既存シートの透過処理のみ行います。</p>
+      <h2><a href="tools/sprite-sheet-maker.html">スプライトシート作成</a></h2>
+      <p class="desc">連番画像やスクリーンショット(Ctrl+V で貼り付け)を並べてスプライトシートにまとめます。キーカラーや背景の透過、暗い部分を透明にする加算素材向けの変換、共通範囲での切り出し、足元などでの位置揃え、コマごとの微調整ができます。できあがったシート1枚の透過だけも行えます。</p>
       <dl>
-        <dt>入力</dt><dd>PNG / BMP (連番または1枚)</dd>
-        <dt>出力</dt><dd>PNG, JSON (独自形式 / Aseprite互換)</dd>
+        <dt>入力</dt><dd>PNG / BMP / JPG など (複数)、クリップボードの画像、シート1枚</dd>
+        <dt>出力</dt><dd>PNG, JSON (Aseprite互換)</dd>
       </dl>
-      <span class="file" aria-hidden="true">tools/keyout-sprite-packer.html</span>
+      <span class="file" aria-hidden="true">tools/sprite-sheet-maker.html</span>
     </li>
     <li class="card">
       <h2><a href="tools/icon-generator.html">アイコン一括生成</a></h2>
@@ -104,15 +104,6 @@ footer a{color:var(--fg)}
         <dt>出力</dt><dd>PNG, JSON (Aseprite互換)</dd>
       </dl>
       <span class="file" aria-hidden="true">tools/jiggle-animator.html</span>
-    </li>
-    <li class="card">
-      <h2><a href="tools/screenshot-sprite-sheet.html">スクショ スプライトシート</a></h2>
-      <p class="desc">スクリーンショットを Ctrl+V で1枚ずつ貼り付け、全コマ共通の範囲で切り出してスプライトシートにまとめます。背景の透過、足元などでの位置揃え、コマごとの微調整もできます。</p>
-      <dl>
-        <dt>入力</dt><dd>クリップボードの画像 / PNG / JPG など (複数)</dd>
-        <dt>出力</dt><dd>PNG, JSON (Aseprite互換)</dd>
-      </dl>
-      <span class="file" aria-hidden="true">tools/screenshot-sprite-sheet.html</span>
     </li>
     <li class="card">
       <h2><a href="tools/frame-sorter.html">コマ整列ツール</a></h2>
