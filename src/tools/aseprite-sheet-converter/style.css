@@ -1,0 +1,40 @@
+/* Aseprite シート変換固有のスタイル */
+/* Layout: 左に操作サイドバー、右にシート（主役）＋下段に再生とJSON。スマホでは縦積み。 */
+/* シート上の枠と番号の色（確認用の表示。書き出しには含まれない） */
+:root{--amber:#c97f00}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--amber:#f0b23a}}
+:root[data-theme="dark"]{--amber:#f0b23a}
+ul{margin:0;padding:0;list-style:none}
+code{font-family:var(--font-mono);font-size:1em}
+canvas.pixel{image-rendering:pixelated;image-rendering:crisp-edges;display:block}
+/* ツール固有で使うユーティリティ（共通ブロックにないものだけ） */
+.-mt-2{margin-top:-8px}.mt-1{margin-top:4px}.mt-3{margin-top:12px}
+.inline-block{display:inline-block}.align-top{vertical-align:top}
+.aspect-square{aspect-ratio:1/1}.max-w-full{max-width:100%}
+.max-h-\[60vh\]{max-height:60vh}.min-h-\[1\.2em\]{min-height:1.2em}.min-h-\[160px\]{min-height:160px}.min-h-\[260px\]{min-height:260px}
+.w-20{width:80px}.w-8{width:32px}.flex-1{flex:1 1 0%}.shrink-0{flex-shrink:0}
+.cursor-pointer{cursor:pointer}.list-disc{list-style-type:disc}.pl-5{padding-left:20px}
+.grid-cols-\[auto_1fr\]{grid-template-columns:auto 1fr}
+.place-items-center{place-items:center}.items-start{align-items:flex-start}.items-baseline{align-items:baseline}.justify-end{justify-content:flex-end}
+.gap-0\.5{gap:2px}.gap-1\.5{gap:6px}.gap-x-4{column-gap:16px}.gap-y-1{row-gap:4px}
+.space-y-1>:not([hidden])~:not([hidden]){margin-top:4px}
+.overflow-auto{overflow:auto}.overflow-hidden{overflow:hidden}
+.truncate{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.break-words{overflow-wrap:break-word}.break-all{word-break:break-all}
+.rounded{border-radius:4px}.rounded-md{border-radius:6px}.border{border:1px solid var(--line)}
+.bg-bg{background-color:var(--bg)}
+.px-1{padding-left:4px;padding-right:4px}.px-3{padding-left:12px;padding-right:12px}.py-0\.5{padding-top:2px;padding-bottom:2px}.py-2{padding-top:8px;padding-bottom:8px}
+.text-right{text-align:right}.text-\[11px\]{font-size:11px}.text-\[12px\]{font-size:12px}.text-\[13px\]{font-size:13px}
+.font-semibold{font-weight:600}.text-fg{color:var(--fg)}.text-amber{color:var(--amber)}
+@media (min-width:768px){.md\:grid-cols-\[minmax\(0\2c 320px\)_minmax\(0\2c 1fr\)\]{grid-template-columns:minmax(0,320px) minmax(0,1fr)}}
+@media (min-width:1024px){.lg\:grid-cols-\[320px_minmax\(0\2c 1fr\)\]{grid-template-columns:320px minmax(0,1fr)}}
+/* ツール固有の部品 */
+.input[type=number]{width:72px;font-variant-numeric:tabular-nums}
+.join>.btn.is-active{position:relative;z-index:1}
+.badge-outline{display:inline-flex;align-items:center;gap:5px;font-size:11px;line-height:1.6;font-weight:500;font-family:var(--font-mono);border:1px solid var(--line);border-radius:4px;padding:0 6px;color:var(--muted);background:var(--panel)}
+.toggle{appearance:none;-webkit-appearance:none;width:32px;height:18px;border-radius:999px;background:var(--line);position:relative;cursor:pointer;flex:none;margin:0;transition:background .12s}
+.toggle::before{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:999px;background:var(--panel);transition:transform .12s;box-shadow:0 1px 2px rgb(0 0 0 / .25)}
+.toggle:checked{background:var(--accent)}
+.toggle:checked::before{transform:translateX(14px)}
+.toggle:disabled{opacity:.4;cursor:not-allowed}
+.side-sec+.side-sec{border-top:1px solid var(--line)}
+.json{font:400 12px/1.5 var(--font-mono);background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:6px;width:100%;resize:vertical;padding:10px 11px;white-space:pre;overflow:auto;tab-size:2}
