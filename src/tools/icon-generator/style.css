@@ -1,0 +1,25 @@
+/* アイコン一括生成固有のスタイル */
+/* Layout: 左 = 設定パネル（固定幅）, 右 = プレビュー。狭幅では縦積み */
+.grid-main{display:grid;grid-template-columns:320px minmax(0,1fr);gap:16px;align-items:start}
+@media (max-width:860px){.grid-main{grid-template-columns:minmax(0,1fr)}}
+.field{display:flex;flex-direction:column;gap:4px}
+.field-row{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.check{display:flex;align-items:flex-start;gap:8px;cursor:pointer}
+.check .checkbox{margin-top:4px}
+.color{width:36px;height:28px;padding:0;border:1px solid var(--line);border-radius:6px;background:none;cursor:pointer}
+.src-thumb{width:96px;height:96px;object-fit:contain;border-radius:6px;border:1px solid var(--line)}
+.group+.group{margin-top:20px}
+.group-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;margin-bottom:8px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:8px}
+.tile{display:flex;flex-direction:column;align-items:center;gap:6px;padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--panel);cursor:pointer;min-width:0;text-align:center}
+.tile:hover{border-color:var(--accent)}
+.tile[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft)}
+.tile .box{width:96px;height:96px;display:flex;align-items:center;justify-content:center;border-radius:6px}
+.tile canvas{display:block;max-width:96px;max-height:96px}
+.tile .name{font-family:var(--font-mono);font-size:11px;line-height:1.4;overflow-wrap:anywhere;color:var(--muted)}
+.tile .size{font-family:var(--font-mono);font-size:12px;font-weight:700}
+.big{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start}
+.big .stage{flex:0 0 auto;max-height:none}
+.big canvas{width:256px;height:256px;max-width:100%}
+.code{font-family:var(--font-mono);font-size:12px;line-height:1.5;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:8px;white-space:pre;overflow:auto;max-height:180px;margin:0}
+textarea.input{width:100%;resize:vertical}
