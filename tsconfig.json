@@ -10,7 +10,8 @@
     "isolatedModules": true,
     "skipLibCheck": true,
     "allowImportingTsExtensions": true,
-    "resolveJsonModule": true
+    "resolveJsonModule": true,
+    "paths": { "@common/*": ["./src/common/*"] }
   },
-  "include": ["vite.config.ts", "src"]
+  "include": ["vite.config.ts", "src", "templates"]
 }

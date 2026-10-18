@@ -1,0 +1,4 @@
+/* ツール固有のスタイル(src/tools/<tool-name>/style.css にコピーして使う)。共通部分は src/common/style.css */
+/* Layout: 左 = 設定パネル（固定幅）, 右 = プレビュー。狭幅では縦積み */
+.grid-main{display:grid;grid-template-columns:300px minmax(0,1fr);gap:16px;align-items:start}
+@media (max-width:860px){.grid-main{grid-template-columns:minmax(0,1fr)}}

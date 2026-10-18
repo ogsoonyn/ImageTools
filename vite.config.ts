@@ -36,5 +36,9 @@ export default defineConfig({
       input: Object.fromEntries(pages.map((page) => [page.replace(/\.html$/, ""), resolve(root, page)])),
     },
   },
+  resolve: {
+    // 共通部品はどこからでも "@common/it" のように読める(tsconfig.json の paths と同じ)
+    alias: { "@common": resolve(root, "src/common") },
+  },
   plugins: [copySamples()],
 });
