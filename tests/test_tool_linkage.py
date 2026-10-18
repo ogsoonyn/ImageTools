@@ -170,7 +170,7 @@ def test_polish_to_upscaler(browser: Browser, base_url: str):
         cols, rows = page.evaluate("(() => { const l = layoutOf(exportSets()[0]); return [l.cols, l.rows]; })()")
         name = page.evaluate("pngName()")
         up = _popup(page, "拡大ツールで開く", problems)
-        up.wait_for_function("state.name !== 'sample'", timeout=15_000)
+        up.wait_for_function("typeof state !== 'undefined' && state.name !== 'sample'", timeout=15_000)
         assert up.evaluate("state.name") == name.removesuffix(".png")
         assert up.evaluate("[state.frame.on, state.frame.cols, state.frame.rows]") == [True, cols, rows]
         up.wait_for_function("document.getElementById('busy').hidden && state.results[0]", timeout=15_000)
@@ -188,7 +188,7 @@ def test_polish_to_inbetween(browser: Browser, base_url: str):
     try:
         act, n = page.evaluate("(() => { const a = doc.frames[cur].tag; return [a, doc.frames.filter((f) => f.tag === a).length]; })()")
         ib = _popup(page, "中割りツールで開く", problems)
-        ib.wait_for_function("S.baseName !== 'sample_slime'", timeout=15_000)
+        ib.wait_for_function("typeof S !== 'undefined' && S.baseName !== 'sample_slime'", timeout=15_000)
         assert ib.evaluate("S.keys.length") == n
         names = ib.evaluate("S.keys.map((k) => k.name)")
         assert names == sorted(names) and names[0].endswith("_" + "1".zfill(len(str(n))))
