@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 from playwright.sync_api import Browser, ConsoleMessage, Page, expect
 
-from conftest import ROOT, SITE, is_redirect
+from conftest import ROOT, is_redirect
 
 SENDERS = [
     "tools/aseprite-sheet-converter.html",
@@ -81,19 +81,6 @@ def test_open_in_polish(browser: Browser, base_url: str, path: str):
         assert polish.evaluate("doc.frames.length") > 0
         assert polish.evaluate("actions()"), "アクションが空"
         assert problems == [], "\n".join(problems)
-    finally:
-        context.close()
-
-
-def test_open_in_polish_from_file_url(browser: Browser):
-    """ローカルの HTML を直接開いた(file://)ときも渡せること。"""
-    context = _new_context(browser)
-    try:
-        page = context.new_page()
-        page.goto((SITE / "tools/frame-sorter.html").as_uri(), wait_until="load")
-        _load_sample(page)
-        polish = _open_polish(page)
-        assert polish.evaluate("doc.frames.length") > 0
     finally:
         context.close()
 

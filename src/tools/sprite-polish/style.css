@@ -1,0 +1,68 @@
+/* シート仕上げ固有のスタイル */
+/* ---- ここから下はツール固有のスタイル ---- */
+/* Layout: 左 = 入力・書き出し・シート全体の操作, 右上 = コマ一覧（1行 = 1アクション）,
+   右下 = ドット編集 + アニメ確認とコマ・差分・フィルタの設定。狭幅では縦積み */
+.grid-main{display:grid;grid-template-columns:240px minmax(0,1fr);gap:16px;align-items:start}
+/* 編集とアニメ確認の間の境目（.splitter）をドラッグで右の列の幅を変える */
+.work{display:grid;grid-template-columns:minmax(0,1fr) 10px var(--side-w,300px);gap:6px;align-items:start}
+.splitter{align-self:stretch;cursor:col-resize;border-radius:5px;position:relative;touch-action:none}
+.splitter::after{content:"";position:absolute;left:4px;top:50%;width:2px;height:48px;margin-top:-24px;border-radius:1px;background:var(--line)}
+.splitter:hover::after,.splitter.on::after{background:var(--accent);height:96px;margin-top:-48px}
+@media (max-width:1100px){.work{grid-template-columns:minmax(0,1fr);gap:16px}.splitter{display:none}}
+/* 高さはブラウザの右下のつまみで変えられる（resize: vertical） */
+.resizable{resize:vertical}
+@media (max-width:860px){.grid-main{grid-template-columns:minmax(0,1fr)}}
+.field{display:flex;flex-direction:column;gap:4px}
+.field>span{font-size:12px;color:var(--muted)}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.row .input{width:72px}
+.toolbar{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;margin-bottom:8px}
+/* 中央寄せは canvas の margin:auto で行う（justify-content:center だと拡大時に左側がスクロールできなくなる） */
+.ed-stage{border-radius:8px;border:1px solid var(--line);overflow:auto;max-height:calc(100vh - 90px);display:flex;padding:12px;min-height:200px}
+.ed-stage canvas{image-rendering:pixelated;touch-action:none;cursor:crosshair;max-width:none;margin:auto;flex:0 0 auto}
+.ed-stage canvas.t-move{cursor:move}
+.anim-stage{border-radius:8px;border:1px solid var(--line);display:flex;padding:10px;min-height:120px;height:260px;overflow:auto}
+.anim-stage canvas{image-rendering:pixelated;max-width:none;margin:auto;flex:0 0 auto}
+.bg-white{background:#ffffff}.bg-black{background:#000000}.bg-green{background:#00b140}.bg-magenta{background:#ff00ff}
+.palette{display:grid;grid-template-columns:repeat(auto-fill,minmax(20px,1fr));gap:3px}
+.swatch{height:20px;border-radius:4px;border:1px solid var(--line);cursor:pointer;padding:0}
+.swatch.on{outline:2px solid var(--accent);outline-offset:1px}
+.cur-color{display:inline-flex;align-items:center;gap:6px}
+.cur-color input[type=color]{width:34px;height:26px;padding:0;border:1px solid var(--line);border-radius:6px;background:var(--bg)}
+.strip{display:flex;flex-direction:column;gap:6px;height:270px;min-height:120px;overflow-y:auto;padding:4px 2px;border-bottom:1px dashed var(--line)}
+.act-row{display:flex;align-items:stretch;gap:8px;min-width:0}
+.act-head{flex:0 0 96px;display:flex;flex-direction:column;justify-content:center;gap:2px;padding:4px 8px;border-radius:8px;background:var(--surface-2);cursor:pointer;min-width:0}
+.act-head.on{background:var(--accent-soft);box-shadow:inset 0 0 0 1px var(--accent)}
+.act-head .name{font-weight:700;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.act-frames{display:flex;gap:6px;overflow-x:auto;min-width:0;flex:1 1 auto;padding-bottom:4px}
+.act-end{flex:0 0 28px;border:1px dashed var(--line);border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:12px}
+.act-end.drag-over{border-color:var(--accent);background:var(--accent-soft)}
+.thumb{flex:0 0 auto;width:84px;border:1px solid var(--line);border-radius:8px;padding:5px;background:var(--bg);cursor:pointer;display:flex;flex-direction:column;gap:3px;position:relative}
+.thumb.sel{border-color:var(--accent);background:var(--accent-soft)}
+.thumb.cur{box-shadow:0 0 0 2px var(--accent)}
+.thumb.dragging{opacity:.4}
+.thumb.drag-over{border-style:dashed;border-color:var(--accent)}
+.thumb .img{height:64px;border-radius:5px;display:flex;align-items:center;justify-content:center;overflow:hidden}
+.thumb canvas{image-rendering:pixelated;flex:0 0 auto}
+.thumb .meta{display:flex;justify-content:space-between;font-size:11px}
+.thumb .flags{display:flex;flex-wrap:wrap;gap:3px;min-height:16px}
+.badge-soft{background:var(--surface-2);color:var(--fg);font-weight:500}
+.badge-warn{background:var(--warn);color:var(--panel)}
+.badge-tag{background:var(--accent-soft);color:var(--fg);font-weight:600;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.kbd{font-family:var(--font-mono);font-size:11px;border:1px solid var(--line);border-radius:4px;padding:0 4px;background:var(--bg)}
+.keys{display:grid;grid-template-columns:auto 1fr;gap:3px 8px;font-size:12px;color:var(--muted)}
+.sample-note{font-size:12px;color:var(--warn)}
+.guide-row{display:flex;align-items:center;gap:6px}
+.guide-row .swatch-line{width:14px;height:3px;border-radius:2px;flex:0 0 auto}
+.guide-row .input{width:64px}
+.hsplit{height:10px;margin-top:-6px;cursor:row-resize;position:relative;touch-action:none}
+.hsplit::after{content:"";position:absolute;top:4px;left:50%;width:48px;height:2px;margin-left:-24px;border-radius:1px;background:var(--line)}
+.hsplit:hover::after,.hsplit.on::after{background:var(--accent);width:96px;margin-left:-48px}
+.fold>summary{cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between;gap:8px}
+.fold>summary::-webkit-details-marker{display:none}
+.fold>summary::before{content:"▸";color:var(--muted);font-size:11px;order:-1}
+.fold[open]>summary::before{content:"▾"}
+.fold>summary h2{margin-right:auto}
+.prm{display:grid;grid-template-columns:88px minmax(0,1fr) 44px;gap:8px;align-items:center;font-size:12px}
+.prm .val{font-family:var(--font-mono);text-align:right}
+.badge-var{background:var(--warn);color:var(--panel)}
