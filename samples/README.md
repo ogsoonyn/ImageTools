@@ -5,7 +5,7 @@ GitHub Pages などの Web サーバー経由で開いたときだけ使えま�
 
 | パス | 使うツール | 内容 |
 | --- | --- | --- |
-| `keyout/colon183.png` 〜 `keyout/colon191.png` | `tools/keyout-sprite-packer.html` | マゼンタ(#FF00FF)背景の連番エフェクト画像 9 枚 |
+| `keyout/colon183.png` 〜 `keyout/colon191.png` | `tools/sprite-sheet-maker.html`(サンプルの種類「マゼンタ背景のエフェクト」) | マゼンタ(#FF00FF)背景の連番エフェクト画像 9 枚 |
 | `aseprite/slime.aseprite` | `tools/aseprite-sheet-converter.html` | 複数レイヤー・タグ付きのスライムのアニメーション |
 | `icon/sample-icon.png` | `tools/icon-generator.html` | 図形だけで描いた 1024×1024 の透過アイコン(山と太陽) |
 

@@ -22,8 +22,17 @@ def discover_pages() -> list[str]:
     pages = []
     if (ROOT / "index.html").exists():
         pages.append("index.html")
-    pages += sorted(p.relative_to(ROOT).as_posix() for p in (ROOT / "tools").glob("*.html"))
+    pages += sorted(p.relative_to(ROOT).as_posix() for p in (ROOT / "tools").glob("*.html") if not is_redirect(p))
     return pages
+
+
+def is_redirect(path: Path) -> bool:
+    """古い URL を新しいツールへ移すだけのページ(統合したツールの旧ファイル)か。"""
+    return 'name="imagetools:redirect"' in path.read_text(encoding="utf-8")
+
+
+def discover_redirects() -> list[str]:
+    return sorted(p.relative_to(ROOT).as_posix() for p in (ROOT / "tools").glob("*.html") if is_redirect(p))
 
 
 class _QuietHandler(http.server.SimpleHTTPRequestHandler):

@@ -13,12 +13,11 @@ from pathlib import Path
 import pytest
 from playwright.sync_api import Browser, ConsoleMessage, Page, expect
 
-from conftest import ROOT
+from conftest import ROOT, is_redirect
 
 SENDERS = [
     "tools/aseprite-sheet-converter.html",
-    "tools/keyout-sprite-packer.html",
-    "tools/screenshot-sprite-sheet.html",
+    "tools/sprite-sheet-maker.html",
     "tools/frame-sorter.html",
 ]
 OPEN_POLISH = "仕上げツールで開く"
@@ -130,7 +129,8 @@ def test_polish_without_handoff_loads_sample(browser: Browser, base_url: str):
 def test_common_js_is_identical():
     """共通 JS(受け渡しを含む)はテンプレートと全ツールで同じであること。"""
     block = re.compile(r"<!-- common:begin common-js -->.*?<!-- common:end common-js -->", re.S)
-    files = [ROOT / "templates/tool-template.html", *sorted((ROOT / "tools").glob("*.html"))]
+    # 旧 URL を移すだけのページは共通部品を持たない
+    files = [ROOT / "templates/tool-template.html", *sorted(p for p in (ROOT / "tools").glob("*.html") if not is_redirect(p))]
     blocks = {f.name: block.search(f.read_text(encoding="utf-8")).group(0) for f in files}
     base = blocks["tool-template.html"]
     assert "openIn" in base and "receive" in base
