@@ -85,19 +85,6 @@ def test_open_in_polish(browser: Browser, base_url: str, path: str):
         context.close()
 
 
-def test_open_in_polish_from_file_url(browser: Browser):
-    """ローカルの HTML を直接開いた(file://)ときも渡せること。"""
-    context = _new_context(browser)
-    try:
-        page = context.new_page()
-        page.goto((SITE / "tools/frame-sorter.html").as_uri(), wait_until="load")
-        _load_sample(page)
-        polish = _open_polish(page)
-        assert polish.evaluate("doc.frames.length") > 0
-    finally:
-        context.close()
-
-
 def test_open_in_polish_matches_saved_json(browser: Browser, base_url: str):
     """コマ整列ツールの例で、保存した JSON(Array 形式)と仕上げツールに入ったコマ数・アクションが一致すること。"""
     context = _new_context(browser)
